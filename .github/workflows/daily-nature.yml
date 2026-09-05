@@ -1,179 +1,133 @@
-name: Daily Nature Quran Short
+name: Daily Nature Quran Shorts
 
 on:
   workflow_dispatch:
-
   schedule:
     - cron: "15 8 * * *"
       timezone: "Asia/Dubai"
 
-
 jobs:
-
-  create-nature-short:
-
+  create-nature-shorts:
     runs-on: ubuntu-latest
 
-
     steps:
-
-      # ======================================================
-      # 1. DOWNLOAD REPOSITORY
-      # ======================================================
 
       - name: Checkout repository
         uses: actions/checkout@v6
 
-
-      # ======================================================
-      # 2. SETUP PYTHON
-      # ======================================================
-
       - name: Set up Python
         uses: actions/setup-python@v5
-
         with:
           python-version: "3.13"
 
-
-      # ======================================================
-      # 3. INSTALL FFMPEG + ARABIC FONT SUPPORT
-      # ======================================================
-
       - name: Install FFmpeg and Arabic libraries
         run: |
-
           sudo apt-get update
-
           sudo apt-get install -y ffmpeg
-
           sudo apt-get install -y \
             libfreetype6-dev \
             libharfbuzz-dev \
             libfribidi-dev \
             libraqm-dev
 
-
-      # ======================================================
-      # 4. INSTALL PYTHON PACKAGES
-      # ======================================================
-
       - name: Install Python packages
         run: |
-
           python -m pip install --upgrade pip
-
           pip install -r requirements.txt
-
-
-      # ======================================================
-      # 5. CHECK PEXELS API KEY
-      # ======================================================
 
       - name: Check Pexels API key
         env:
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
-
         run: |
-
           if [ -z "$PEXELS_API_KEY" ]; then
-
             echo "PEXELS_API_KEY is missing"
-
             exit 1
-
           fi
 
           echo "Pexels API key detected"
 
-
-      # ======================================================
-      # 6. CHECK ARABIC FONT
-      # ======================================================
-
       - name: Check Arabic font
         run: |
-
           if [ ! -f "fonts/NotoNaskhArabic-Regular.otf" ]; then
-
             echo "Noto Naskh Arabic font is missing"
-
-            echo "Expected file:"
+            echo "Expected:"
             echo "fonts/NotoNaskhArabic-Regular.otf"
-
             exit 1
-
           fi
 
           echo "Noto Naskh Arabic font detected"
 
-
-      # ======================================================
-      # 7. CREATE ONE NATURE QURAN SHORT
-      # ======================================================
-
-      - name: Create one Nature Quran Short
+      - name: Create 3 Nature Quran Shorts
         env:
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
-
         run: |
-
           python nature_quran_generator.py
-
-
-      # ======================================================
-      # 8. CHECK GENERATED FILES
-      # ======================================================
 
       - name: Check generated files
         run: |
-
           echo "Checking output folder..."
-
           ls -lh output
 
           echo ""
-          echo "Checking video..."
-
+          echo "Checking video 1..."
           test -f output/nature_quran_short_1.mp4
 
+          echo "Checking video 2..."
+          test -f output/nature_quran_short_2.mp4
+
+          echo "Checking video 3..."
+          test -f output/nature_quran_short_3.mp4
+
           echo ""
-          echo "Checking metadata..."
+          echo "Checking metadata 1..."
+          test -f output/metadata_1.txt
 
-          test -f output/metadata.txt
+          echo "Checking metadata 2..."
+          test -f output/metadata_2.txt
+
+          echo "Checking metadata 3..."
+          test -f output/metadata_3.txt
 
           echo ""
-          echo "Generated files successfully."
-
-
-      # ======================================================
-      # 9. SHOW VIDEO INFORMATION
-      # ======================================================
+          echo "All 3 videos and metadata files exist successfully."
 
       - name: Show video information
         run: |
+          echo "=============================="
+          echo "SHORT 1"
+          echo "=============================="
 
-          echo "Video information:"
-
-          ffprobe \
-            -v error \
+          ffprobe -v error \
             -show_entries format=duration,size \
             -show_entries stream=width,height,codec_name \
             -of default=noprint_wrappers=1 \
             output/nature_quran_short_1.mp4
 
+          echo ""
+          echo "=============================="
+          echo "SHORT 2"
+          echo "=============================="
 
-      # ======================================================
-      # 10. UPLOAD VIDEO AS ARTIFACT
-      # ======================================================
+          ffprobe -v error \
+            -show_entries format=duration,size \
+            -show_entries stream=width,height,codec_name \
+            -of default=noprint_wrappers=1 \
+            output/nature_quran_short_2.mp4
 
-      - name: Upload Nature Quran Short
+          echo ""
+          echo "=============================="
+          echo "SHORT 3"
+          echo "=============================="
+
+          ffprobe -v error \
+            -show_entries format=duration,size \
+            -show_entries stream=width,height,codec_name \
+            -of default=noprint_wrappers=1 \
+            output/nature_quran_short_3.mp4
+
+      - name: Upload 3 Nature Quran Shorts
         uses: actions/upload-artifact@v4
-
         with:
-
-          name: nature-quran-short-test
-
+          name: nature-quran-shorts-${{ github.run_number }}
           path: output/
-
           retention-days: 7
