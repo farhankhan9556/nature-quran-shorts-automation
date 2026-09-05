@@ -46,16 +46,16 @@ if not ARABIC_FONT.exists():
 TOPICS = [
     "mountain sunrise",
     "ocean waves",
-    "forest",
     "waterfall",
-    "desert",
-    "snow mountains",
-    "lake",
+    "forest sunlight",
+    "desert sunset",
+    "snow mountain",
+    "beautiful lake",
     "ocean sunset",
     "rain forest",
-    "night sky",
-    "river",
-    "cliffs",
+    "night sky stars",
+    "river nature",
+    "dramatic cliffs",
 ]
 
 
@@ -78,7 +78,7 @@ QURAN_AYAHS = [
 
 
 # ============================================================
-# HTTP
+# HTTP REQUEST
 # ============================================================
 
 def get_json(url, **kwargs):
@@ -95,12 +95,14 @@ def get_json(url, **kwargs):
 
 
 # ============================================================
-# DOWNLOAD
+# DOWNLOAD FILE
 # ============================================================
 
 def download_file(url, path):
 
-    print(f"Downloading: {url}")
+    print(
+        f"Downloading: {url}"
+    )
 
     response = requests.get(
         url,
@@ -109,17 +111,25 @@ def download_file(url, path):
 
     response.raise_for_status()
 
-    with open(path, "wb") as f:
-        f.write(response.content)
+    with open(
+        path,
+        "wb"
+    ) as f:
 
-    print(f"Saved: {path}")
+        f.write(
+            response.content
+        )
+
+    print(
+        f"Saved: {path}"
+    )
 
 
 # ============================================================
 # FONT
 # ============================================================
 
-def font(size):
+def get_font(size):
 
     return ImageFont.truetype(
         str(ARABIC_FONT),
@@ -128,17 +138,20 @@ def font(size):
 
 
 # ============================================================
-# PEXELS
+# GET NATURE VIDEO
 # ============================================================
 
-def get_nature_video(topic, index):
+def get_nature_video(
+    topic
+):
 
     url = (
         "https://api.pexels.com/v1/videos/search"
     )
 
     headers = {
-        "Authorization": PEXELS_API_KEY
+        "Authorization":
+        PEXELS_API_KEY
     }
 
     params = {
@@ -154,15 +167,21 @@ def get_nature_video(topic, index):
         params=params
     )
 
-    videos = data.get("videos", [])
+    videos = data.get(
+        "videos",
+        []
+    )
 
     if not videos:
+
         raise RuntimeError(
-            f"No videos found for {topic}"
+            f"No Pexels videos found for: "
+            f"{topic}"
         )
 
     candidates = []
 
+    # Prefer portrait HD
     for video in videos:
 
         for vf in video.get(
@@ -170,15 +189,28 @@ def get_nature_video(topic, index):
             []
         ):
 
-            width = vf.get("width") or 0
-            height = vf.get("height") or 0
+            width = (
+                vf.get("width") or 0
+            )
 
-            if height > width and width >= 720:
-                candidates.append(vf)
+            height = (
+                vf.get("height") or 0
+            )
 
+            if (
+                height > width
+                and width >= 720
+            ):
+
+                candidates.append(
+                    vf
+                )
+
+    # Fallback
     if not candidates:
 
         for video in videos:
+
             candidates.extend(
                 video.get(
                     "video_files",
@@ -187,13 +219,16 @@ def get_nature_video(topic, index):
             )
 
     if not candidates:
+
         raise RuntimeError(
-            f"No usable video found for {topic}"
+            "No usable Pexels video found"
         )
 
+    # Highest resolution
     candidates.sort(
         key=lambda x:
-        (x.get("width") or 0) *
+        (x.get("width") or 0)
+        *
         (x.get("height") or 0),
         reverse=True
     )
@@ -202,12 +237,12 @@ def get_nature_video(topic, index):
 
     output = (
         ASSETS /
-        f"nature_source_{index}.mp4"
+        "nature_source_1.mp4"
     )
 
     print()
     print(
-        f"Nature {index}: {topic}"
+        f"Nature video: {topic}"
     )
 
     print(
@@ -226,103 +261,57 @@ def get_nature_video(topic, index):
 
 
 # ============================================================
-# QURAN DATA
+# GET QURAN DATA
 # ============================================================
 
-def get_quran_data(global_ayah):
+def get_quran_data(
+    global_ayah
+):
 
+    # Arabic Qur'an text
     arabic_url = (
         "https://api.alquran.cloud/v1/ayah/"
         f"{global_ayah}/quran-uthmani"
     )
 
-    english_url = (
-        "https://api.alquran.cloud/v1/ayah/"
-        f"{global_ayah}/en.sahih"
-    )
-
+    # Alafasy recitation
     audio_url = (
         "https://api.alquran.cloud/v1/ayah/"
         f"{global_ayah}/ar.alafasy"
     )
 
-    arabic = get_json(
+    arabic_data = get_json(
         arabic_url
     )["data"]
 
-    english = get_json(
-        english_url
-    )["data"]
-
-    audio = get_json(
+    audio_data = get_json(
         audio_url
     )["data"]
 
     return {
-        "arabic": arabic["text"],
-        "english": english["text"],
-        "surah": arabic["surah"]["englishName"],
-        "surah_arabic": arabic["surah"]["name"],
-        "ayah": arabic["numberInSurah"],
-        "audio": audio["audio"]
+        "arabic":
+        arabic_data["text"],
+
+        "surah":
+        arabic_data["surah"]["englishName"],
+
+        "surah_arabic":
+        arabic_data["surah"]["name"],
+
+        "ayah":
+        arabic_data["numberInSurah"],
+
+        "audio":
+        audio_data["audio"]
     }
 
 
 # ============================================================
-# TEXT WRAPPING
-# ============================================================
-
-def wrap_english(
-    draw,
-    text,
-    text_font,
-    max_width
-):
-
-    words = text.split()
-
-    lines = []
-    current = ""
-
-    for word in words:
-
-        test = (
-            word
-            if not current
-            else current + " " + word
-        )
-
-        bbox = draw.textbbox(
-            (0, 0),
-            test,
-            font=text_font
-        )
-
-        width = bbox[2] - bbox[0]
-
-        if width <= max_width:
-
-            current = test
-
-        else:
-
-            if current:
-                lines.append(current)
-
-            current = word
-
-    if current:
-        lines.append(current)
-
-    return lines
-
-
-# ============================================================
-# ARABIC WRAPPING
+# ARABIC TEXT WRAPPING
 #
 # IMPORTANT:
-# Pillow + libraqm handles Arabic shaping and RTL.
-# We DO NOT reverse the Arabic manually.
+# We DO NOT reverse or reshape the Arabic manually.
+# Pillow + libraqm handles Arabic RTL rendering.
 # ============================================================
 
 def wrap_arabic(
@@ -340,11 +329,17 @@ def wrap_arabic(
 
     for word in words:
 
-        test = (
-            word
-            if not current
-            else current + " " + word
-        )
+        if current:
+
+            test = (
+                current +
+                " " +
+                word
+            )
+
+        else:
+
+            test = word
 
         bbox = draw.textbbox(
             (0, 0),
@@ -354,7 +349,10 @@ def wrap_arabic(
             language="ar"
         )
 
-        width = bbox[2] - bbox[0]
+        width = (
+            bbox[2] -
+            bbox[0]
+        )
 
         if width <= max_width:
 
@@ -363,60 +361,71 @@ def wrap_arabic(
         else:
 
             if current:
-                lines.append(current)
+                lines.append(
+                    current
+                )
 
             current = word
 
     if current:
-        lines.append(current)
+        lines.append(
+            current
+        )
 
     return lines
 
 
 # ============================================================
-# FIND ARABIC SIZE
+# FIND BEST ARABIC FONT SIZE
 # ============================================================
 
-def get_arabic_layout(
+def fit_arabic(
     draw,
     text,
     max_width
 ):
 
     for size in range(
-        100,
+        105,
         55,
         -2
     ):
 
-        f = font(size)
+        text_font = get_font(
+            size
+        )
 
         lines = wrap_arabic(
             draw,
             text,
-            f,
+            text_font,
             max_width
         )
 
-        if len(lines) <= 4:
+        if len(lines) <= 3:
 
-            return f, lines
+            return (
+                text_font,
+                lines
+            )
 
-    f = font(56)
+    text_font = get_font(
+        56
+    )
 
     return (
-        f,
+        text_font,
         wrap_arabic(
             draw,
             text,
-            f,
+            text_font,
             max_width
         )
     )
 
 
 # ============================================================
-# QURAN OVERLAY
+# CREATE CLEAN QURAN TEXT OVERLAY
 # ============================================================
 
 def create_quran_overlay(
@@ -438,168 +447,28 @@ def create_quran_overlay(
         )
     )
 
-    draw = ImageDraw.Draw(image)
+    draw = ImageDraw.Draw(
+        image
+    )
 
     center_x = WIDTH // 2
 
     # ========================================================
-    # MAIN PANEL
+    # ARABIC VERSE
     # ========================================================
 
-    panel_left = 55
-    panel_right = WIDTH - 55
-    panel_top = 420
-    panel_bottom = 1535
-
-    draw.rounded_rectangle(
-        (
-            panel_left,
-            panel_top,
-            panel_right,
-            panel_bottom
-        ),
-        radius=38,
-        fill=(
-            0,
-            0,
-            0,
-            165
-        ),
-        outline=(
-            255,
-            255,
-            255,
-            70
-        ),
-        width=2
+    arabic_font, lines = fit_arabic(
+        draw,
+        quran["arabic"],
+        900
     )
 
-    # ========================================================
-    # TOP DECORATION
-    # ========================================================
+    # Similar position to reference video
+    start_y = 1060
 
-    decoration_y = (
-        panel_top + 60
-    )
+    line_spacing = 18
 
-    draw.line(
-        (
-            center_x - 190,
-            decoration_y,
-            center_x - 45,
-            decoration_y
-        ),
-        fill=(
-            255,
-            255,
-            255,
-            100
-        ),
-        width=2
-    )
-
-    draw.line(
-        (
-            center_x + 45,
-            decoration_y,
-            center_x + 190,
-            decoration_y
-        ),
-        fill=(
-            255,
-            255,
-            255,
-            100
-        ),
-        width=2
-    )
-
-    draw.ellipse(
-        (
-            center_x - 10,
-            decoration_y - 10,
-            center_x + 10,
-            decoration_y + 10
-        ),
-        outline=(
-            255,
-            255,
-            255,
-            130
-        ),
-        width=2
-    )
-
-    # ========================================================
-    # SURAH ARABIC NAME
-    # ========================================================
-
-    surah_font = font(38)
-
-    draw.text(
-        (
-            center_x,
-            panel_top + 108
-        ),
-        quran["surah_arabic"],
-        font=surah_font,
-        fill=(
-            255,
-            255,
-            255,
-            245
-        ),
-        anchor="mm",
-        direction="rtl",
-        language="ar"
-    )
-
-    # ========================================================
-    # SURAH / VERSE
-    # ========================================================
-
-    reference_font = font(24)
-
-    reference = (
-        f"{quran['surah']}  •  "
-        f"Verse {quran['ayah']}"
-    )
-
-    draw.text(
-        (
-            center_x,
-            panel_top + 157
-        ),
-        reference,
-        font=reference_font,
-        fill=(
-            255,
-            255,
-            255,
-            180
-        ),
-        anchor="mm"
-    )
-
-    # ========================================================
-    # ARABIC AYAH
-    # ========================================================
-
-    arabic_font, arabic_lines = (
-        get_arabic_layout(
-            draw,
-            quran["arabic"],
-            860
-        )
-    )
-
-    arabic_y = (
-        panel_top + 225
-    )
-
-    arabic_spacing = 18
-
-    for line in arabic_lines:
+    for line in lines:
 
         bbox = draw.textbbox(
             (0, 0),
@@ -610,13 +479,62 @@ def create_quran_overlay(
         )
 
         text_height = (
-            bbox[3] - bbox[1]
+            bbox[3] -
+            bbox[1]
         )
+
+        # ----------------------------------------------------
+        # Dark shadow
+        # ----------------------------------------------------
+
+        draw.text(
+            (
+                center_x + 4,
+                start_y + 5
+            ),
+            line,
+            font=arabic_font,
+            fill=(
+                0,
+                0,
+                0,
+                230
+            ),
+            anchor="ma",
+            direction="rtl",
+            language="ar"
+        )
+
+        # ----------------------------------------------------
+        # Soft shadow
+        # ----------------------------------------------------
+
+        draw.text(
+            (
+                center_x + 2,
+                start_y + 2
+            ),
+            line,
+            font=arabic_font,
+            fill=(
+                0,
+                0,
+                0,
+                160
+            ),
+            anchor="ma",
+            direction="rtl",
+            language="ar"
+        )
+
+        # ----------------------------------------------------
+        # White Arabic
+        # ----------------------------------------------------
 
         draw.text(
             (
                 center_x,
-                arabic_y
+                start_y
             ),
             line,
             font=arabic_font,
@@ -631,112 +549,42 @@ def create_quran_overlay(
             language="ar"
         )
 
-        arabic_y += (
+        start_y += (
             text_height +
-            arabic_spacing
+            line_spacing
         )
 
     # ========================================================
-    # SEPARATOR
+    # SURAH + VERSE
     # ========================================================
 
-    separator_y = (
-        arabic_y + 22
+    reference_font = get_font(
+        27
     )
 
-    draw.line(
-        (
-            center_x - 210,
-            separator_y,
-            center_x + 210,
-            separator_y
-        ),
-        fill=(
-            255,
-            255,
-            255,
-            80
-        ),
-        width=2
-    )
-
-    # ========================================================
-    # ENGLISH TRANSLATION
-    # ========================================================
-
-    english_font = font(29)
-
-    english_lines = wrap_english(
-        draw,
-        quran["english"],
-        english_font,
-        820
-    )
-
-    english_y = (
-        separator_y + 38
-    )
-
-    for line in english_lines:
-
-        bbox = draw.textbbox(
-            (0, 0),
-            line,
-            font=english_font
-        )
-
-        text_height = (
-            bbox[3] - bbox[1]
-        )
-
-        draw.text(
-            (
-                center_x,
-                english_y
-            ),
-            line,
-            font=english_font,
-            fill=(
-                245,
-                245,
-                245,
-                235
-            ),
-            anchor="ma"
-        )
-
-        english_y += (
-            text_height + 7
-        )
-
-    # ========================================================
-    # TRANSLATION CREDIT
-    # ========================================================
-
-    credit_font = font(20)
-
-    credit = (
-        "Translation: Saheeh International"
+    reference = (
+        f"{quran['surah']}  •  "
+        f"Verse {quran['ayah']}"
     )
 
     draw.text(
         (
             center_x,
-            panel_bottom - 62
+            start_y + 38
         ),
-        credit,
-        font=credit_font,
+        reference,
+        font=reference_font,
         fill=(
             255,
             255,
             255,
-            145
+            215
         ),
-        anchor="mm"
+        anchor="ma"
     )
 
     # ========================================================
-    # SAVE
+    # SAVE OVERLAY
     # ========================================================
 
     image.save(
@@ -749,11 +597,10 @@ def create_quran_overlay(
 
 
 # ============================================================
-# CREATE SHORT
+# CREATE THE VIDEO
 # ============================================================
 
-def create_short(
-    index,
+def create_video(
     topic,
     ayah_number
 ):
@@ -764,7 +611,7 @@ def create_short(
     )
 
     print(
-        f"Creating Short {index}"
+        "Creating ONE test Short"
     )
 
     print(
@@ -775,9 +622,8 @@ def create_short(
     # Nature
     # --------------------------------------------------------
 
-    video = get_nature_video(
-        topic,
-        index
+    nature_video = get_nature_video(
+        topic
     )
 
     # --------------------------------------------------------
@@ -800,17 +646,17 @@ def create_short(
 
     overlay = (
         ASSETS /
-        f"quran_overlay_{index}.png"
+        "quran_overlay_1.png"
     )
 
     audio = (
         ASSETS /
-        f"quran_audio_{index}.mp3"
+        "quran_audio_1.mp3"
     )
 
     output = (
         OUTPUT /
-        f"nature_quran_short_{index}.mp4"
+        "nature_quran_short_1.mp4"
     )
 
     # --------------------------------------------------------
@@ -832,20 +678,51 @@ def create_short(
     )
 
     # ========================================================
-    # FFMPEG FILTER
+    # CINEMATIC FILTER
     # ========================================================
 
     filter_complex = (
+
+        # ----------------------------------------------------
+        # Scale to 9:16
+        # ----------------------------------------------------
+
         "[0:v]"
         "scale=1080:1920:"
         "force_original_aspect_ratio=increase,"
         "crop=1080:1920,"
-        "fps=30,"
-        "setsar=1"
-        "[bg];"
+        "fps=30"
 
-        "[bg][1:v]"
+        "[base];"
+
+        # ----------------------------------------------------
+        # Cinematic color
+        # ----------------------------------------------------
+
+        "[base]"
+        "eq="
+        "brightness=-0.07:"
+        "contrast=1.08:"
+        "saturation=0.92"
+
+        "[dark];"
+
+        # ----------------------------------------------------
+        # Soft vignette
+        # ----------------------------------------------------
+
+        "[dark]"
+        "vignette=PI/5"
+
+        "[cinematic];"
+
+        # ----------------------------------------------------
+        # Add Arabic
+        # ----------------------------------------------------
+
+        "[cinematic][1:v]"
         "overlay=0:0"
+
         "[v]"
     )
 
@@ -864,9 +741,9 @@ def create_short(
         "-1",
 
         "-i",
-        str(video),
+        str(nature_video),
 
-        # Transparent overlay
+        # Transparent text overlay
         "-loop",
         "1",
 
@@ -881,15 +758,15 @@ def create_short(
         "-filter_complex",
         filter_complex,
 
-        # Video
+        # Video stream
         "-map",
         "[v]",
 
-        # Audio
+        # Audio stream
         "-map",
         "2:a:0",
 
-        # Duration
+        # Exactly 20 seconds
         "-t",
         str(VIDEO_SECONDS),
 
@@ -901,7 +778,7 @@ def create_short(
         "veryfast",
 
         "-crf",
-        "20",
+        "19",
 
         "-pix_fmt",
         "yuv420p",
@@ -916,7 +793,7 @@ def create_short(
         "-ar",
         "44100",
 
-        # YouTube
+        # YouTube compatibility
         "-movflags",
         "+faststart",
 
@@ -925,12 +802,8 @@ def create_short(
 
     print()
     print(
-        "Running FFmpeg..."
+        "Rendering video..."
     )
-
-    # ========================================================
-    # RUN FFMPEG
-    # ========================================================
 
     result = subprocess.run(
         command,
@@ -938,6 +811,10 @@ def create_short(
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE
     )
+
+    # ========================================================
+    # FFMPEG ERROR
+    # ========================================================
 
     if result.returncode != 0:
 
@@ -974,34 +851,44 @@ def create_short(
     if not output.exists():
 
         raise RuntimeError(
-            f"Video not created: {output}"
+            "Output video was not created"
         )
 
-    size = (
-        output.stat().st_size
-    )
+    file_size = output.stat().st_size
 
-    if size < 10000:
+    if file_size < 10000:
 
         raise RuntimeError(
-            "Generated video is too small"
+            "Output video is too small"
         )
 
     print()
     print(
-        f"SUCCESS: {output}"
+        "=========================================="
+    )
+
+    print(
+        "SUCCESS!"
+    )
+
+    print(
+        f"Video: {output}"
     )
 
     print(
         f"Size: "
-        f"{size / 1024 / 1024:.2f} MB"
+        f"{file_size / 1024 / 1024:.2f} MB"
+    )
+
+    print(
+        "=========================================="
     )
 
     return quran
 
 
 # ============================================================
-# DAILY SELECTION
+# SELECT ONE TOPIC + ONE AYAH
 # ============================================================
 
 today = int(
@@ -1010,52 +897,67 @@ today = int(
     )
 )
 
-random.seed(today)
-
-selected_topics = random.sample(
-    TOPICS,
-    3
+random.seed(
+    today
 )
 
-selected_ayahs = random.sample(
-    QURAN_AYAHS,
-    3
+selected_topic = random.choice(
+    TOPICS
+)
+
+selected_ayah = random.choice(
+    QURAN_AYAHS
 )
 
 
 # ============================================================
-# CREATE 3 SHORTS
+# CREATE ONE VIDEO
 # ============================================================
 
-metadata = []
-
-for index, (
-    topic,
-    ayah
-) in enumerate(
-    zip(
-        selected_topics,
-        selected_ayahs
-    ),
-    start=1
-):
-
-    quran = create_short(
-        index,
-        topic,
-        ayah
-    )
-
-    metadata.append(quran)
+quran = create_video(
+    selected_topic,
+    selected_ayah
+)
 
 
 # ============================================================
-# METADATA
+# CREATE METADATA
 # ============================================================
 
 metadata_file = (
     OUTPUT /
     "metadata.txt"
+)
+
+title = (
+    f"{selected_topic.title()} "
+    f"| Beautiful Qur'an Reminder"
+)
+
+description = (
+    "A peaceful reflection on the beauty "
+    "of Allah's creation and the Holy Qur'an.\n\n"
+
+    f"Qur'an: {quran['surah']} "
+    f"Verse {quran['ayah']}\n\n"
+
+    "Recitation: Mishary Rashid Alafasy\n"
+
+    "Qur'an data and recitation: "
+    "Al Quran Cloud\n\n"
+
+    "Nature footage: Pexels\n\n"
+
+    "#Quran "
+    "#QuranRecitation "
+    "#Islam "
+    "#Allah "
+    "#IslamicShorts "
+    "#Nature "
+    "#NatureShorts "
+    "#QuranVerses "
+    "#IslamicReminder "
+    "#Muslim"
 )
 
 with open(
@@ -1064,117 +966,45 @@ with open(
     encoding="utf-8"
 ) as file:
 
-    for i, (
-        topic,
-        quran
-    ) in enumerate(
-        zip(
-            selected_topics,
-            metadata
-        ),
-        start=1
-    ):
+    file.write(
+        "NATURE QURAN SHORT\n"
+        "============================\n\n"
+    )
 
-        title = (
-            f"{topic.title()} "
-            f"and a Beautiful Qur'an Verse "
-            f"| Short {i}"
-        )
+    file.write(
+        f"TITLE:\n{title}\n\n"
+    )
 
-        description = (
-            "Reflect on the beauty of Allah's "
-            "creation through nature and the "
-            "words of the Holy Qur'an.\n\n"
+    file.write(
+        f"DESCRIPTION:\n{description}\n\n"
+    )
 
-            f"Qur'an: {quran['surah']} "
-            f"Verse {quran['ayah']}\n\n"
+    file.write(
+        f"SURAH:\n"
+        f"{quran['surah']} "
+        f"({quran['surah_arabic']})\n\n"
+    )
 
-            "Translation: Saheeh International\n"
+    file.write(
+        f"VERSE:\n"
+        f"{quran['ayah']}\n\n"
+    )
 
-            "Recitation: Mishary Rashid Alafasy\n\n"
+    file.write(
+        f"ARABIC:\n"
+        f"{quran['arabic']}\n"
+    )
 
-            "Nature footage: Pexels\n"
-
-            "Qur'an data and recitation: "
-            "Al Quran Cloud\n\n"
-
-            "#Quran "
-            "#QuranRecitation "
-            "#Islam "
-            "#Allah "
-            "#IslamicShorts "
-            "#Nature "
-            "#NatureShorts "
-            "#QuranVerses "
-            "#IslamicReminder "
-            "#Muslim"
-        )
-
-        file.write(
-            "\n"
-            "==================================================\n"
-        )
-
-        file.write(
-            f"SHORT {i}\n"
-        )
-
-        file.write(
-            "==================================================\n\n"
-        )
-
-        file.write(
-            f"TOPIC:\n{topic}\n\n"
-        )
-
-        file.write(
-            f"TITLE:\n{title}\n\n"
-        )
-
-        file.write(
-            f"SURAH:\n"
-            f"{quran['surah']} "
-            f"({quran['surah_arabic']})\n\n"
-        )
-
-        file.write(
-            f"VERSE:\n"
-            f"{quran['ayah']}\n\n"
-        )
-
-        file.write(
-            f"ARABIC:\n"
-            f"{quran['arabic']}\n\n"
-        )
-
-        file.write(
-            f"ENGLISH TRANSLATION:\n"
-            f"{quran['english']}\n\n"
-        )
-
-        file.write(
-            f"DESCRIPTION:\n"
-            f"{description}\n\n"
-        )
-
-
-# ============================================================
-# COMPLETE
-# ============================================================
 
 print()
 print(
-    "=================================================="
+    "=========================================="
 )
 
 print(
-    "SUCCESS!"
+    "ONE TEST VIDEO COMPLETED"
 )
 
 print(
-    "3 Nature Qur'an Shorts created."
-)
-
-print(
-    "=================================================="
+    "=========================================="
 )
