@@ -11,7 +11,6 @@ from PIL import Image, ImageDraw, ImageFont
 
 WIDTH = 1080
 HEIGHT = 1920
-
 VIDEO_COUNT = 3
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -59,7 +58,7 @@ TOPICS = [
 ]
 
 # ============================================================
-# COMPLETE AYAH NUMBERS
+# QURAN AYAH NUMBERS
 # ============================================================
 
 QURAN_AYAHS = [
@@ -76,25 +75,40 @@ QURAN_AYAHS = [
 ]
 
 # ============================================================
-# HELPERS
+# HTTP SESSION
+# ============================================================
+
+session = requests.Session()
+
+session.headers.update({
+    "User-Agent": "NatureQuranShorts/1.0",
+    "Accept": "*/*"
+})
+
+
+# ============================================================
+# DOWNLOAD FILE
 # ============================================================
 
 def download_file(url, destination):
 
-    print(f"Downloading: {url}")
+    print(f"Downloading:")
+    print(url)
 
-    response = requests.get(
+    response = session.get(
         url,
-        timeout=60,
+        timeout=90,
         stream=True
     )
 
     response.raise_for_status()
 
     with open(destination, "wb") as f:
+
         for chunk in response.iter_content(
             chunk_size=1024 * 1024
         ):
+
             if chunk:
                 f.write(chunk)
 
@@ -102,10 +116,14 @@ def download_file(url, destination):
 
 
 # ============================================================
-# SEARCH AND DOWNLOAD ONE PEXELS NATURE CLIP
+# PEXELS NATURE VIDEO
 # ============================================================
 
-def get_pexels_video(topic, index, clip_number):
+def get_pexels_video(
+    topic,
+    index,
+    clip_number
+):
 
     if not PEXELS_API_KEY:
         raise RuntimeError(
@@ -145,7 +163,7 @@ def get_pexels_video(topic, index, clip_number):
 
     if not videos:
         raise RuntimeError(
-            f"No Pexels videos found for: {topic}"
+            f"No Pexels videos found: {topic}"
         )
 
     candidates = []
@@ -170,11 +188,9 @@ def get_pexels_video(topic, index, clip_number):
             if not link:
                 continue
 
-            # Prefer portrait
             if height <= width:
                 continue
 
-            # Prefer good resolution
             if width < 720:
                 continue
 
@@ -196,25 +212,25 @@ def get_pexels_video(topic, index, clip_number):
 
                 link = file_info.get("link")
 
-                width = file_info.get(
-                    "width"
-                ) or 0
-
-                height = file_info.get(
-                    "height"
-                ) or 0
-
                 if link:
 
                     candidates.append({
-                        "width": width,
-                        "height": height,
+                        "width":
+                            file_info.get(
+                                "width"
+                            ) or 0,
+
+                        "height":
+                            file_info.get(
+                                "height"
+                            ) or 0,
+
                         "link": link
                     })
 
     if not candidates:
         raise RuntimeError(
-            f"No downloadable video found for {topic}"
+            f"No downloadable Pexels video: {topic}"
         )
 
     candidates.sort(
@@ -223,13 +239,10 @@ def get_pexels_video(topic, index, clip_number):
         reverse=True
     )
 
-    # Pick randomly from the best videos
-    top_candidates = candidates[
-        :min(8, len(candidates))
-    ]
-
     selected = random.choice(
-        top_candidates
+        candidates[
+            :min(8, len(candidates))
+        ]
     )
 
     print(
@@ -264,11 +277,10 @@ def get_quran_ayah(global_ayah):
 
     print()
     print(
-        f"Getting complete Quran Ayah: "
-        f"{global_ayah}"
+        f"Getting Quran Ayah: {global_ayah}"
     )
 
-    response = requests.get(
+    response = session.get(
         url,
         timeout=60
     )
@@ -285,16 +297,29 @@ def get_quran_ayah(global_ayah):
     ayah = data["data"]
 
     return {
-        "global_number": global_ayah,
-        "arabic": ayah["text"],
-        "surah_name": ayah["surah"]["englishName"],
-        "surah_number": ayah["surah"]["number"],
-        "ayah_number": ayah["numberInSurah"]
+        "global_number":
+            global_ayah,
+
+        "arabic":
+            ayah["text"],
+
+        "surah_name":
+            ayah["surah"]["englishName"],
+
+        "surah_number":
+            ayah["surah"]["number"],
+
+        "ayah_number":
+            ayah["numberInSurah"]
     }
 
 
 # ============================================================
 # GET COMPLETE ALAFASY RECITATION
+#
+# IMPORTANT:
+# We now ask Al Quran Cloud API for the official
+# audio URL instead of hard-coding the 192 kbps URL.
 # ============================================================
 
 def get_quran_audio(
@@ -302,29 +327,145 @@ def get_quran_audio(
     index
 ):
 
-    url = (
-        f"https://cdn.islamic.network/"
-        f"quran/audio/192/ar.alafasy/"
-        f"{global_ayah}.mp3"
+    print()
+    print(
+        f"Getting Alafasy audio URL "
+        f"for Ayah {global_ayah}"
     )
+
+    api_url = (
+        f"https://api.alquran.cloud/v1/"
+        f"ayah/{global_ayah}/ar.alafasy"
+    )
+
+    response = session.get(
+        api_url,
+        timeout=60
+    )
+
+    response.raise_for_status()
+
+    data = response.json()
+
+    if data.get("status") != "OK":
+        raise RuntimeError(
+            f"Audio API error for Ayah "
+            f"{global_ayah}"
+        )
+
+    ayah_data = data.get("data", {})
+
+    audio_url = ayah_data.get("audio")
+
+    if not audio_url:
+
+        # Some API responses may provide
+        # multiple audio URLs.
+        audio_urls = (
+            ayah_data.get("audioSecondary")
+            or []
+        )
+
+        if audio_urls:
+            audio_url = audio_urls[0]
+
+    if not audio_url:
+
+        raise RuntimeError(
+            f"No Alafasy audio URL returned "
+            f"for Ayah {global_ayah}"
+        )
+
+    print()
+    print("Official audio URL returned by API:")
+    print(audio_url)
 
     destination = (
         ASSETS_DIR /
         f"quran_{index}.mp3"
     )
 
-    print()
-    print(
-        f"Downloading complete recitation "
-        f"for Ayah {global_ayah}"
-    )
+    # --------------------------------------------------------
+    # Download API-provided URL
+    # --------------------------------------------------------
 
-    download_file(
-        url,
-        destination
-    )
+    try:
 
-    return destination
+        download_file(
+            audio_url,
+            destination
+        )
+
+        print(
+            "Alafasy audio downloaded successfully."
+        )
+
+        return destination
+
+    except requests.HTTPError as first_error:
+
+        print()
+        print(
+            "API-provided audio URL failed:"
+        )
+
+        print(first_error)
+
+        # ----------------------------------------------------
+        # Fallback CDN URLs
+        #
+        # 128 is Alafasy's documented default bitrate.
+        # ----------------------------------------------------
+
+        fallback_bitrates = [
+            128,
+            64,
+            192,
+            48,
+            40,
+            32
+        ]
+
+        for bitrate in fallback_bitrates:
+
+            fallback_url = (
+                "https://cdn.islamic.network/"
+                f"quran/audio/{bitrate}/"
+                f"ar.alafasy/"
+                f"{global_ayah}.mp3"
+            )
+
+            print()
+            print(
+                f"Trying fallback "
+                f"{bitrate} kbps..."
+            )
+
+            try:
+
+                download_file(
+                    fallback_url,
+                    destination
+                )
+
+                print(
+                    f"Fallback {bitrate} kbps "
+                    f"download successful."
+                )
+
+                return destination
+
+            except requests.RequestException as error:
+
+                print(
+                    f"{bitrate} kbps failed: "
+                    f"{error}"
+                )
+
+        raise RuntimeError(
+            "Unable to download Alafasy "
+            f"audio for Ayah {global_ayah}."
+        ) from first_error
 
 
 # ============================================================
@@ -355,8 +496,9 @@ def get_audio_duration(audio_file):
         result.stdout.strip()
     )
 
+    print()
     print(
-        f"Complete recitation: "
+        f"COMPLETE RECITATION: "
         f"{duration:.2f} seconds"
     )
 
@@ -395,7 +537,10 @@ def wrap_arabic_text(
             language="ar"
         )
 
-        width = bbox[2] - bbox[0]
+        width = (
+            bbox[2] -
+            bbox[0]
+        )
 
         if width <= max_width:
 
@@ -411,7 +556,9 @@ def wrap_arabic_text(
             current_line = word
 
     if current_line:
-        lines.append(current_line)
+        lines.append(
+            current_line
+        )
 
     return lines
 
@@ -442,7 +589,6 @@ def create_text_overlay(
 
     arabic_text = quran["arabic"]
 
-    # Start large and reduce if necessary
     font_size = 110
 
     while font_size >= 54:
@@ -481,16 +627,17 @@ def create_text_overlay(
         )
 
         line_heights.append(
-            bbox[3] - bbox[1]
+            bbox[3] -
+            bbox[1]
         )
 
     total_height = (
         sum(line_heights)
-        + line_spacing *
+        +
+        line_spacing *
         (len(lines) - 1)
     )
 
-    # Lower-middle position
     center_y = 1070
 
     start_y = (
@@ -501,7 +648,7 @@ def create_text_overlay(
     y = start_y
 
     # --------------------------------------------------------
-    # Arabic
+    # Arabic Quran text
     # --------------------------------------------------------
 
     for line, line_height in zip(
@@ -518,7 +665,8 @@ def create_text_overlay(
         )
 
         text_width = (
-            bbox[2] - bbox[0]
+            bbox[2] -
+            bbox[0]
         )
 
         x = (
@@ -526,9 +674,12 @@ def create_text_overlay(
             text_width
         ) // 2
 
-        # Subtle shadow
+        # Shadow
         draw.text(
-            (x + 3, y + 5),
+            (
+                x + 3,
+                y + 5
+            ),
             line,
             font=font,
             fill=(0, 0, 0, 190),
@@ -536,7 +687,7 @@ def create_text_overlay(
             language="ar"
         )
 
-        # White Arabic
+        # Arabic
         draw.text(
             (x, y),
             line,
@@ -552,7 +703,7 @@ def create_text_overlay(
         )
 
     # --------------------------------------------------------
-    # Surah / Verse
+    # Surah / Verse reference
     # --------------------------------------------------------
 
     reference_font = ImageFont.truetype(
@@ -572,7 +723,8 @@ def create_text_overlay(
     )
 
     reference_width = (
-        bbox[2] - bbox[0]
+        bbox[2] -
+        bbox[0]
     )
 
     reference_x = (
@@ -619,7 +771,7 @@ def create_text_overlay(
 
 
 # ============================================================
-# CREATE PROFESSIONAL METADATA
+# METADATA
 # ============================================================
 
 def create_metadata(
@@ -646,17 +798,16 @@ def create_metadata(
         f"A Moment of Peace With the Quran | {surah} {verse} #Shorts"
     ]
 
-    title = random.choice(
-        titles
-    )
+    title = random.choice(titles)
 
     if len(title) > 95:
+
         title = (
             f"Quran Reminder | "
             f"{surah} {verse} #Shorts"
         )
 
-    description = f"""Listen to a beautiful complete recitation from the Holy Quran — {surah}, Verse {verse}.
+    description = f"""Listen to a complete recitation from the Holy Quran — {surah}, Verse {verse}.
 
 Take a quiet moment to listen, reflect and remember Allah.
 
@@ -716,7 +867,9 @@ Created for peaceful Quran listening, reflection and Islamic reminders.
 
         f.write("TAGS\n")
         f.write("====\n")
-        f.write(", ".join(tags))
+        f.write(
+            ", ".join(tags)
+        )
         f.write("\n\n")
 
         f.write("SURAH\n")
@@ -760,38 +913,46 @@ def create_video(
 
     print()
     print("=" * 70)
-    print(f"CREATING {clip_count}-CLIP QURAN SHORT")
-    print(f"TOTAL DURATION: {duration:.2f} seconds")
+    print(
+        f"CREATING {clip_count}-CLIP SHORT"
+    )
+
+    print(
+        f"RECITATION: "
+        f"{duration:.2f} seconds"
+    )
+
     print("=" * 70)
 
-    # Small safety margin.
-    final_duration = duration + 0.20
-
-    # --------------------------------------------------------
-    # Divide the video duration between clips
-    # --------------------------------------------------------
+    final_duration = (
+        duration + 0.20
+    )
 
     segment_duration = (
-        duration / clip_count
+        duration /
+        clip_count
     )
 
     filter_parts = []
 
-    for i in range(clip_count):
+    # --------------------------------------------------------
+    # Prepare each nature clip
+    # --------------------------------------------------------
 
-        # Last clip receives any tiny remaining duration
+    for i in range(
+        clip_count
+    ):
+
+        current_duration = (
+            segment_duration
+        )
+
         if i == clip_count - 1:
 
             current_duration = (
                 duration -
                 segment_duration *
                 (clip_count - 1)
-            )
-
-        else:
-
-            current_duration = (
-                segment_duration
             )
 
         filter_parts.append(
@@ -810,18 +971,22 @@ def create_video(
         )
 
     # --------------------------------------------------------
-    # Join nature clips
+    # Join all nature clips
     # --------------------------------------------------------
 
     concat_inputs = ""
 
-    for i in range(clip_count):
+    for i in range(
+        clip_count
+    ):
+
         concat_inputs += (
             f"[clip{i}]"
         )
 
-    concat_filter = (
-        concat_inputs +
+    filter_parts.append(
+        concat_inputs
+        +
         f"concat=n={clip_count}:"
         f"v=1:a=0,"
         f"setpts=PTS-STARTPTS"
@@ -829,28 +994,32 @@ def create_video(
     )
 
     # --------------------------------------------------------
-    # Add Arabic overlay
+    # Arabic overlay
+    #
+    # Nature inputs = 0,1,2
+    # Audio = clip_count
+    # Overlay = clip_count + 1
     # --------------------------------------------------------
 
-    overlay_filter = (
-        "[nature]["
-        f"{clip_count}:v"
-        "]overlay=0:0:"
-        "format=auto,"
-        "format=yuv420p"
-        "[v]"
+    overlay_input = (
+        clip_count + 1
     )
 
-    filter_complex = (
-        ";".join(filter_parts)
-        + ";"
-        + concat_filter
-        + ";"
-        + overlay_filter
+    filter_parts.append(
+        f"[nature]"
+        f"[{overlay_input}:v]"
+        f"overlay=0:0:"
+        f"format=auto,"
+        f"format=yuv420p"
+        f"[v]"
+    )
+
+    filter_complex = ";".join(
+        filter_parts
     )
 
     # --------------------------------------------------------
-    # FFmpeg inputs
+    # FFmpeg command
     # --------------------------------------------------------
 
     command = [
@@ -858,7 +1027,7 @@ def create_video(
         "-y"
     ]
 
-    # Nature clips
+    # Nature videos
     for clip in nature_clips:
 
         command += [
@@ -868,21 +1037,17 @@ def create_video(
             str(clip)
         ]
 
-    # Quran audio
+    # Audio
     command += [
         "-i",
         str(audio_file)
     ]
 
-    # Arabic overlay
+    # Overlay
     command += [
         "-i",
         str(overlay_file)
     ]
-
-    # --------------------------------------------------------
-    # Filters
-    # --------------------------------------------------------
 
     command += [
         "-filter_complex",
@@ -891,14 +1056,14 @@ def create_video(
         "-map",
         "[v]",
 
-        # Audio input comes after all nature videos
+        # Audio input index
         "-map",
         f"{clip_count}:a:0",
 
+        # Complete recitation + tiny safety margin
         "-t",
         f"{final_duration:.3f}",
 
-        # Video encoding
         "-c:v",
         "libx264",
 
@@ -911,7 +1076,6 @@ def create_video(
         "-pix_fmt",
         "yuv420p",
 
-        # Audio encoding
         "-c:a",
         "aac",
 
@@ -921,7 +1085,6 @@ def create_video(
         "-ar",
         "48000",
 
-        # YouTube-friendly MP4
         "-movflags",
         "+faststart",
 
@@ -945,9 +1108,9 @@ def create_video(
             "FFmpeg failed."
         )
 
+    print()
     print(
-        f"Video created successfully: "
-        f"{output_file}"
+        "Video created successfully."
     )
 
 
@@ -959,8 +1122,8 @@ def main():
 
     print()
     print("=" * 70)
-    print("NATURE + QURAN SHORTS AUTOMATION")
-    print("3 PROFESSIONAL SHORTS")
+    print("NATURE + QURAN SHORTS")
+    print("3 VIDEOS / RUN")
     print("=" * 70)
 
     if not PEXELS_API_KEY:
@@ -974,7 +1137,7 @@ def main():
         )
 
     # --------------------------------------------------------
-    # Clean previous output
+    # Clean output
     # --------------------------------------------------------
 
     for file in OUTPUT_DIR.glob("*"):
@@ -983,7 +1146,7 @@ def main():
             file.unlink()
 
     # --------------------------------------------------------
-    # Select 3 different Ayahs
+    # Select 3 unique Ayahs
     # --------------------------------------------------------
 
     selected_ayahs = random.sample(
@@ -992,7 +1155,7 @@ def main():
     )
 
     # --------------------------------------------------------
-    # Select 3 different primary nature themes
+    # Select 3 different main nature topics
     # --------------------------------------------------------
 
     selected_topics = random.sample(
@@ -1001,10 +1164,12 @@ def main():
     )
 
     print()
-    print("TODAY'S 3 SHORTS")
+    print("TODAY'S VIDEOS")
     print("-" * 70)
 
-    for i in range(VIDEO_COUNT):
+    for i in range(
+        VIDEO_COUNT
+    ):
 
         print(
             f"{i + 1}. "
@@ -1012,9 +1177,9 @@ def main():
             f"Ayah {selected_ayahs[i]}"
         )
 
-    # --------------------------------------------------------
-    # Create each Short
-    # --------------------------------------------------------
+    # ========================================================
+    # CREATE THREE SHORTS
+    # ========================================================
 
     for index in range(
         1,
@@ -1038,7 +1203,7 @@ def main():
         print("#" * 70)
 
         # ----------------------------------------------------
-        # 1. Complete Ayah
+        # COMPLETE AYAH
         # ----------------------------------------------------
 
         quran = get_quran_ayah(
@@ -1046,7 +1211,7 @@ def main():
         )
 
         # ----------------------------------------------------
-        # 2. Complete recitation
+        # COMPLETE RECITATION
         # ----------------------------------------------------
 
         audio_file = get_quran_audio(
@@ -1055,7 +1220,7 @@ def main():
         )
 
         # ----------------------------------------------------
-        # 3. Measure actual recitation
+        # ACTUAL AUDIO LENGTH
         # ----------------------------------------------------
 
         duration = get_audio_duration(
@@ -1063,13 +1228,7 @@ def main():
         )
 
         # ----------------------------------------------------
-        # 4. Decide 2 or 3 nature clips
-        #
-        # Shorter Ayahs:
-        # 2 clips
-        #
-        # Longer Ayahs:
-        # 3 clips
+        # 2 OR 3 NATURE CLIPS
         # ----------------------------------------------------
 
         if duration <= 12:
@@ -1077,17 +1236,18 @@ def main():
         else:
             clip_count = 3
 
+        print()
         print(
-            f"Nature clips required: "
-            f"{clip_count}"
+            f"Using {clip_count} nature clips."
         )
 
         # ----------------------------------------------------
-        # 5. Select DIFFERENT nature topics
+        # Unique nature topics
         # ----------------------------------------------------
 
         remaining_topics = [
-            x for x in TOPICS
+            x
+            for x in TOPICS
             if x != topic
         ]
 
@@ -1100,21 +1260,8 @@ def main():
             clip_count - 1
         )
 
-        print()
-        print("Nature sequence:")
-
-        for number, clip_topic in enumerate(
-            clip_topics,
-            start=1
-        ):
-
-            print(
-                f"Clip {number}: "
-                f"{clip_topic}"
-            )
-
         # ----------------------------------------------------
-        # 6. Download nature clips
+        # Download nature clips
         # ----------------------------------------------------
 
         nature_clips = []
@@ -1123,6 +1270,12 @@ def main():
             clip_topics,
             start=1
         ):
+
+            print()
+            print(
+                f"Clip {clip_number}: "
+                f"{clip_topic}"
+            )
 
             clip = get_pexels_video(
                 clip_topic,
@@ -1135,7 +1288,7 @@ def main():
             )
 
         # ----------------------------------------------------
-        # 7. Create Arabic overlay
+        # Arabic overlay
         # ----------------------------------------------------
 
         overlay_file = create_text_overlay(
@@ -1144,7 +1297,7 @@ def main():
         )
 
         # ----------------------------------------------------
-        # 8. Create metadata
+        # Metadata
         # ----------------------------------------------------
 
         title = create_metadata(
@@ -1154,7 +1307,7 @@ def main():
         )
 
         # ----------------------------------------------------
-        # 9. Create final Short
+        # Final video
         # ----------------------------------------------------
 
         output_file = (
@@ -1180,7 +1333,7 @@ def main():
         )
 
         print(
-            f"Recitation: "
+            f"Complete recitation: "
             f"{duration:.2f} seconds"
         )
 
@@ -1190,12 +1343,13 @@ def main():
         )
 
         print(
-            f"File: {output_file.name}"
+            f"Output: "
+            f"{output_file.name}"
         )
 
-    # --------------------------------------------------------
-    # Final summary
-    # --------------------------------------------------------
+    # ========================================================
+    # FINAL CHECK
+    # ========================================================
 
     print()
     print("=" * 70)
