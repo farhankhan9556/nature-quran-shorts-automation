@@ -8,7 +8,6 @@ on:
       timezone: "Asia/Dubai"
 
 jobs:
-
   create-nature-shorts:
 
     runs-on: ubuntu-latest
@@ -41,27 +40,26 @@ jobs:
             echo "PEXELS_API_KEY is missing"
             exit 1
           fi
+
           echo "Pexels API key detected"
 
-      - name: Create and download nature footage
+      - name: Create 3 Nature Quran Shorts
         env:
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
         run: |
           python nature_quran_generator.py
 
-      - name: Check downloaded videos
+      - name: Check generated files
         run: |
-          ls -lah assets/
-          test -f assets/nature_source_1.mp4
-          test -f assets/nature_source_2.mp4
-          test -f assets/nature_source_3.mp4
+          ls -lh output
+          test -f output/nature_quran_short_1.mp4
+          test -f output/nature_quran_short_2.mp4
+          test -f output/nature_quran_short_3.mp4
+          test -f output/metadata.txt
 
-      - name: Save nature footage
+      - name: Upload Shorts
         uses: actions/upload-artifact@v4
         with:
-          name: nature-source-videos
-          path: |
-            assets/nature_source_1.mp4
-            assets/nature_source_2.mp4
-            assets/nature_source_3.mp4
-          retention-days: 3
+          name: nature-quran-shorts
+          path: output/
+          retention-days: 7
