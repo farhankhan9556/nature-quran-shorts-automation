@@ -1,29 +1,48 @@
 import os
+import re
+import json
 import random
 import subprocess
-import requests
 from pathlib import Path
+from urllib.parse import quote
+
+import requests
 from PIL import Image, ImageDraw, ImageFont
+
 
 # ============================================================
 # SETTINGS
 # ============================================================
 
-WIDTH = 1080
-HEIGHT = 1920
-VIDEO_COUNT = 3
-
 BASE_DIR = Path(__file__).resolve().parent
-ASSETS_DIR = BASE_DIR / "assets"
+
 OUTPUT_DIR = BASE_DIR / "output"
+TEMP_DIR = BASE_DIR / "temp"
 FONT_DIR = BASE_DIR / "fonts"
 
-ASSETS_DIR.mkdir(exist_ok=True)
 OUTPUT_DIR.mkdir(exist_ok=True)
+TEMP_DIR.mkdir(exist_ok=True)
 
 ARABIC_FONT = FONT_DIR / "NotoNaskhArabic-Regular.otf"
 
 PEXELS_API_KEY = os.environ.get("PEXELS_API_KEY")
+
+VIDEO_WIDTH = 1080
+VIDEO_HEIGHT = 1920
+
+VIDEO_FPS = 30
+
+ARABIC_FONT_SIZE = 86
+ENGLISH_FONT_SIZE = 42
+REFERENCE_FONT_SIZE = 32
+
+NATURE_AUDIO_VOLUME = 0.08
+
+SHORT_COUNT = 3
+
+WORDS_PER_SCREEN_MIN = 3
+WORDS_PER_SCREEN_MAX = 4
+
 
 # ============================================================
 # NATURE TOPICS
@@ -54,87 +73,606 @@ TOPICS = [
     "clouds over mountains",
     "green forest",
     "peaceful river",
-    "beautiful nature"
+    "beautiful nature",
 ]
 
+
 # ============================================================
-# QURAN AYAH NUMBERS
+# CC0 / PUBLIC DOMAIN NATURE SOUNDS
 # ============================================================
 
-QURAN_AYAHS = [
-    171,
-    1911,
-    1914,
-    1919,
-    2834,
-    3429,
-    4079,
-    4914,
-    5244,
-    5984
+NATURE_SOUNDS = [
+    {
+        "name": "Ocean Waves",
+        "url": "https://commons.wikimedia.org/wiki/Special:Redirect/file/Ocean_Waves_on_a_Tropical_Beach.ogg"
+    },
+    {
+        "name": "Birds in Garden",
+        "url": "https://commons.wikimedia.org/wiki/Special:Redirect/file/Birds_chirping_in_a_garden.ogg"
+    },
+    {
+        "name": "Forest Birds",
+        "url": "https://commons.wikimedia.org/wiki/Special:Redirect/file/Birds_forest.ogg"
+    },
+    {
+        "name": "Birds Singing",
+        "url": "https://commons.wikimedia.org/wiki/Special:Redirect/file/Birds_singing_in_garden.ogg"
+    },
 ]
 
-# ============================================================
-# HTTP SESSION
-# ============================================================
-
-session = requests.Session()
-
-session.headers.update({
-    "User-Agent": "NatureQuranShorts/1.0",
-    "Accept": "*/*"
-})
-
 
 # ============================================================
-# DOWNLOAD FILE
+# HELPERS
 # ============================================================
+
+def run_cmd(command):
+    print("RUN:", " ".join(str(x) for x in command))
+
+    result = subprocess.run(
+        command,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True
+    )
+
+    if result.returncode != 0:
+        print(result.stdout)
+        print(result.stderr)
+        raise RuntimeError(
+            f"Command failed with exit code {result.returncode}"
+        )
+
+    return result.stdout.strip()
+
 
 def download_file(url, destination):
+    print(f"Downloading: {url}")
 
-    print(f"Downloading:")
-    print(url)
-
-    response = session.get(
+    response = requests.get(
         url,
-        timeout=90,
-        stream=True
+        timeout=120,
+        headers={
+            "User-Agent": "NatureQuranShorts/1.0"
+        }
     )
 
     response.raise_for_status()
 
-    with open(destination, "wb") as f:
+    destination.write_bytes(response.content)
 
-        for chunk in response.iter_content(
-            chunk_size=1024 * 1024
-        ):
-
-            if chunk:
-                f.write(chunk)
+    if destination.stat().st_size < 1000:
+        raise RuntimeError(
+            f"Downloaded file is unexpectedly small: {destination}"
+        )
 
     return destination
 
 
+def get_duration(file_path):
+    output = run_cmd([
+        "ffprobe",
+        "-v",
+        "error",
+        "-show_entries",
+        "format=duration",
+        "-of",
+        "default=noprint_wrappers=1:nokey=1",
+        str(file_path)
+    ])
+
+    return float(output)
+
+
 # ============================================================
-# PEXELS NATURE VIDEO
+# QURAN TEXT
 # ============================================================
 
-def get_pexels_video(
-    topic,
-    index,
-    clip_number
-):
+def get_quran_data(global_ayah):
+    """
+    Get Arabic Qur'an text and Pickthall English translation.
+    """
 
-    if not PEXELS_API_KEY:
-        raise RuntimeError(
-            "PEXELS_API_KEY is missing."
+    arabic_url = (
+        f"https://api.alquran.cloud/v1/ayah/"
+        f"{global_ayah}/quran-uthmani"
+    )
+
+    english_url = (
+        f"https://api.alquran.cloud/v1/ayah/"
+        f"{global_ayah}/en.pickthall"
+    )
+
+    arabic_response = requests.get(
+        arabic_url,
+        timeout=30
+    )
+
+    arabic_response.raise_for_status()
+
+    english_response = requests.get(
+        english_url,
+        timeout=30
+    )
+
+    english_response.raise_for_status()
+
+    arabic_data = arabic_response.json()["data"]
+    english_data = english_response.json()["data"]
+
+    return {
+        "arabic": arabic_data["text"],
+        "english": english_data["text"],
+        "surah_number": arabic_data["surah"]["number"],
+        "surah_name": arabic_data["surah"]["englishName"],
+        "ayah_number": arabic_data["numberInSurah"],
+        "global_number": global_ayah,
+    }
+
+
+# ============================================================
+# CC0 QURAN AUDIO
+# ============================================================
+
+SURAH_NAME_MAP = {
+    "Baqara": 2,
+    "Baqarah": 2,
+    "Imran": 3,
+    "Nisa": 4,
+    "An-Nisa": 4,
+    "Maida": 5,
+    "Anam": 6,
+    "Araf": 7,
+    "Anfal": 8,
+    "Tawbah": 9,
+    "Yunus": 10,
+    "Hud": 11,
+    "Yusuf": 12,
+    "Ibrahim": 14,
+    "Kahf": 18,
+    "Maryam": 19,
+    "Taha": 20,
+    "Anbiya": 21,
+    "Hajj": 22,
+    "Muminun": 23,
+    "Furqan": 25,
+    "Shuara": 26,
+    "Naml": 27,
+    "Qasas": 28,
+    "Ankabut": 29,
+    "Rum": 30,
+    "Luqman": 31,
+    "Sajda": 32,
+    "Ahzab": 33,
+    "Saba": 34,
+    "Fatir": 35,
+    "Yasin": 36,
+    "Saffat": 37,
+    "Sad": 38,
+    "Zumar": 39,
+    "Ghafir": 40,
+    "Fussilat": 41,
+    "Shura": 42,
+    "Zukhruf": 43,
+    "Dukhan": 44,
+    "Jathiya": 45,
+    "Ahqaf": 46,
+    "Muhammad": 47,
+    "Fath": 48,
+    "Hujurat": 49,
+    "Qaf": 50,
+    "Dhariyat": 51,
+    "Najm": 53,
+    "Rahman": 55,
+    "Waqia": 56,
+    "Hadid": 57,
+    "Mujadila": 58,
+    "Hashr": 59,
+    "Mumtahina": 60,
+    "Saff": 61,
+    "Jumua": 62,
+    "Munafiqun": 63,
+    "Taghabun": 64,
+    "Talaq": 65,
+    "Tahrim": 66,
+    "Mulk": 67,
+    "Qalam": 68,
+    "Haqqah": 69,
+    "Maarij": 70,
+    "Nuh": 71,
+    "Jinn": 72,
+    "Muzzammil": 73,
+    "Muddaththir": 74,
+    "Qiyamah": 75,
+    "Insan": 76,
+    "Mursalat": 77,
+    "Naba": 78,
+    "Naziat": 79,
+    "Abasa": 80,
+    "Takwir": 81,
+    "Infitar": 82,
+    "Mutaffifin": 83,
+    "Inshiqaq": 84,
+    "Buruj": 85,
+    "Tariq": 86,
+    "Ala": 87,
+    "Ghashiyah": 88,
+    "Fajr": 89,
+    "Balad": 90,
+    "Shams": 91,
+    "Layl": 92,
+    "Duha": 93,
+    "Sharh": 94,
+    "Tin": 95,
+    "Alaq": 96,
+    "Qadr": 97,
+    "Bayyinah": 98,
+    "Zalzalah": 99,
+    "Adiyat": 100,
+    "Qariah": 101,
+    "Takathur": 102,
+    "Asr": 103,
+    "Humazah": 104,
+    "Fil": 105,
+    "Quraysh": 106,
+    "Maun": 107,
+    "Kawthar": 108,
+    "Kafirun": 109,
+    "Nasr": 110,
+    "Masad": 111,
+    "Ikhlas": 112,
+    "Falaq": 113,
+    "Nas": 114,
+}
+
+
+def commons_category_files():
+    """
+    Get files from Aaqib Azeez's Wikimedia Commons category.
+    """
+
+    api_url = "https://commons.wikimedia.org/w/api.php"
+
+    params = {
+        "action": "query",
+        "format": "json",
+        "list": "categorymembers",
+        "cmtitle": "Category:Recitations of the Qur'an by Aaqib Azeez",
+        "cmlimit": "500",
+        "cmtype": "file",
+    }
+
+    response = requests.get(
+        api_url,
+        params=params,
+        timeout=60
+    )
+
+    response.raise_for_status()
+
+    return response.json()["query"]["categorymembers"]
+
+
+def parse_verse_filename(title):
+    """
+    Parse titles such as:
+
+    Verse 216, Al-Baqara - Recitation...
+    Verse 34, An-Nisa - Recitation...
+    """
+
+    clean = title.replace("File:", "")
+
+    match = re.search(
+        r"Verse\s+(\d+),\s+([A-Za-z-]+)",
+        clean,
+        re.IGNORECASE
+    )
+
+    if not match:
+        return None
+
+    ayah = int(match.group(1))
+    surah_name = match.group(2)
+
+    surah_number = SURAH_NAME_MAP.get(surah_name)
+
+    if not surah_number:
+        return None
+
+    return surah_number, ayah
+
+
+def get_cc0_verse_audio_candidates():
+    """
+    Return individual verse recordings.
+    """
+
+    files = commons_category_files()
+
+    candidates = []
+
+    for item in files:
+
+        title = item["title"]
+
+        parsed = parse_verse_filename(title)
+
+        if not parsed:
+            continue
+
+        candidates.append({
+            "title": title,
+            "surah_number": parsed[0],
+            "ayah_number": parsed[1],
+        })
+
+    print(
+        f"Found {len(candidates)} individual verse "
+        f"recordings in Wikimedia Commons category."
+    )
+
+    return candidates
+
+
+def get_commons_audio_url(title):
+    """
+    Resolve the actual media URL and verify CC0/public-domain
+    metadata when available.
+    """
+
+    api_url = "https://commons.wikimedia.org/w/api.php"
+
+    params = {
+        "action": "query",
+        "format": "json",
+        "titles": title,
+        "prop": "imageinfo",
+        "iiprop": "url|extmetadata",
+    }
+
+    response = requests.get(
+        api_url,
+        params=params,
+        timeout=60
+    )
+
+    response.raise_for_status()
+
+    pages = response.json()["query"]["pages"]
+
+    for page in pages.values():
+
+        if "imageinfo" not in page:
+            continue
+
+        info = page["imageinfo"][0]
+
+        metadata = info.get("extmetadata", {})
+
+        license_name = metadata.get(
+            "LicenseShortName",
+            {}
+        ).get("value", "")
+
+        license_url = metadata.get(
+            "LicenseUrl",
+            {}
+        ).get("value", "")
+
+        print(
+            f"Audio license: {license_name}"
         )
 
-    print()
-    print(
-        f"Searching Pexels: "
-        f"{topic} | Clip {clip_number}"
+        # Accept explicit CC0 or public domain only.
+        allowed = (
+            "CC0" in license_name
+            or "Public domain" in license_name
+            or "public domain" in license_name
+            or "CC Zero" in license_name
+        )
+
+        if not allowed:
+            raise RuntimeError(
+                f"Audio is not explicitly CC0/public domain: "
+                f"{license_name}"
+            )
+
+        return info["url"], license_name, license_url
+
+    raise RuntimeError(
+        f"Could not resolve Wikimedia audio: {title}"
     )
+
+
+def choose_cc0_audio_for_ayah(
+    surah_number,
+    ayah_number
+):
+    """
+    Find an exact individual-ayah CC0 recording.
+    """
+
+    candidates = get_cc0_verse_audio_candidates()
+
+    matches = [
+        item
+        for item in candidates
+        if item["surah_number"] == surah_number
+        and item["ayah_number"] == ayah_number
+    ]
+
+    if not matches:
+        raise RuntimeError(
+            f"No CC0 individual recording found for "
+            f"{surah_number}:{ayah_number}"
+        )
+
+    selected = random.choice(matches)
+
+    url, license_name, license_url = get_commons_audio_url(
+        selected["title"]
+    )
+
+    return {
+        "title": selected["title"],
+        "url": url,
+        "license": license_name,
+        "license_url": license_url,
+    }
+
+
+# ============================================================
+# WORD GROUPING
+# ============================================================
+
+ARABIC_PUNCTUATION = (
+    "،؛؟!.,:;!?()[]{}"
+)
+
+
+def clean_arabic_word(word):
+    return word.strip(
+        ARABIC_PUNCTUATION
+    )
+
+
+def arabic_words(text):
+    return [
+        clean_arabic_word(x)
+        for x in text.split()
+        if clean_arabic_word(x)
+    ]
+
+
+def english_words(text):
+    return [
+        x.strip(
+            ".,!?;:()[]{}\"'"
+        )
+        for x in text.split()
+        if x.strip()
+    ]
+
+
+def make_word_groups(words, min_words=3, max_words=4):
+    """
+    Create groups of 3–4 words.
+
+    Example:
+
+    8 words -> 4 + 4
+    9 words -> 3 + 3 + 3
+    10 words -> 3 + 3 + 4
+    11 words -> 4 + 3 + 4
+    """
+
+    n = len(words)
+
+    if n <= max_words:
+        return [words]
+
+    groups = []
+
+    remaining = n
+
+    index = 0
+
+    while remaining > 0:
+
+        if remaining <= max_words:
+            size = remaining
+
+        elif remaining == max_words + 1:
+            size = 3
+
+        else:
+            size = random.choice(
+                [min_words, max_words]
+            )
+
+        groups.append(
+            words[index:index + size]
+        )
+
+        index += size
+        remaining -= size
+
+    return groups
+
+
+def make_translation_groups(
+    arabic_word_groups,
+    english_text
+):
+    """
+    Approximate alignment between Arabic word groups
+    and the English translation.
+
+    This is a visual approximation because English
+    translation word order is different from Arabic.
+    """
+
+    english = english_words(english_text)
+
+    group_count = len(arabic_word_groups)
+
+    if group_count == 1:
+        return [english_text]
+
+    result = []
+
+    total = len(english)
+
+    start = 0
+
+    for i, arabic_group in enumerate(
+        arabic_word_groups
+    ):
+
+        if i == group_count - 1:
+            end = total
+
+        else:
+            proportion = (
+                len(arabic_group)
+                / sum(
+                    len(x)
+                    for x in arabic_word_groups
+                )
+            )
+
+            count = max(
+                1,
+                round(total * proportion)
+            )
+
+            end = min(
+                total,
+                start + count
+            )
+
+        part = english[start:end]
+
+        if not part:
+            part = english[
+                max(0, start - 1):start + 1
+            ]
+
+        result.append(
+            " ".join(part)
+        )
+
+        start = end
+
+    return result
+
+
+# ============================================================
+# PEXELS
+# ============================================================
+
+def search_pexels_video(topic):
+    url = "https://api.pexels.com/videos/search"
 
     headers = {
         "Authorization": PEXELS_API_KEY
@@ -144,11 +682,11 @@ def get_pexels_video(
         "query": topic,
         "orientation": "portrait",
         "size": "large",
-        "per_page": 30
+        "per_page": 15,
     }
 
     response = requests.get(
-        "https://api.pexels.com/videos/search",
+        url,
         headers=headers,
         params=params,
         timeout=60
@@ -163,906 +701,594 @@ def get_pexels_video(
 
     if not videos:
         raise RuntimeError(
-            f"No Pexels videos found: {topic}"
+            f"No Pexels video found for: {topic}"
         )
 
-    candidates = []
+    return videos
+
+
+def choose_pexels_video(videos):
+    usable = []
 
     for video in videos:
 
-        for file_info in video.get(
+        for file in video.get(
             "video_files",
             []
         ):
 
-            width = file_info.get(
-                "width"
-            ) or 0
-
-            height = file_info.get(
-                "height"
-            ) or 0
-
-            link = file_info.get("link")
-
-            if not link:
-                continue
+            width = file.get("width") or 0
+            height = file.get("height") or 0
 
             if height <= width:
                 continue
 
-            if width < 720:
+            if height < 1280:
                 continue
 
-            candidates.append({
+            link = file.get("link")
+
+            if not link:
+                continue
+
+            usable.append({
+                "url": link,
                 "width": width,
                 "height": height,
-                "link": link
+                "duration": video.get(
+                    "duration",
+                    10
+                ),
             })
 
-    # Fallback
-    if not candidates:
+    if not usable:
 
         for video in videos:
 
-            for file_info in video.get(
+            for file in video.get(
                 "video_files",
                 []
             ):
 
-                link = file_info.get("link")
+                link = file.get("link")
 
                 if link:
-
-                    candidates.append({
-                        "width":
-                            file_info.get(
-                                "width"
-                            ) or 0,
-
-                        "height":
-                            file_info.get(
-                                "height"
-                            ) or 0,
-
-                        "link": link
+                    usable.append({
+                        "url": link,
+                        "width": file.get(
+                            "width",
+                            1080
+                        ),
+                        "height": file.get(
+                            "height",
+                            1920
+                        ),
+                        "duration": video.get(
+                            "duration",
+                            10
+                        ),
                     })
 
-    if not candidates:
+    if not usable:
         raise RuntimeError(
-            f"No downloadable Pexels video: {topic}"
+            "No usable Pexels video file found."
         )
 
-    candidates.sort(
-        key=lambda x:
-        x["width"] * x["height"],
-        reverse=True
-    )
+    return random.choice(usable)
 
-    selected = random.choice(
-        candidates[
-            :min(8, len(candidates))
-        ]
-    )
 
-    print(
-        f"Selected: "
-        f"{selected['width']}x"
-        f"{selected['height']}"
-    )
+def download_nature_video(
+    topic,
+    destination
+):
+    videos = search_pexels_video(topic)
 
-    destination = (
-        ASSETS_DIR /
-        f"nature_{index}_{clip_number}.mp4"
+    selected = choose_pexels_video(
+        videos
     )
 
     download_file(
-        selected["link"],
+        selected["url"],
         destination
     )
 
-    return destination
+    return selected
 
 
 # ============================================================
-# GET COMPLETE QURAN AYAH
+# BACKGROUND VIDEO
 # ============================================================
 
-def get_quran_ayah(global_ayah):
-
-    url = (
-        f"https://api.alquran.cloud/v1/"
-        f"ayah/{global_ayah}/quran-uthmani"
-    )
-
-    print()
-    print(
-        f"Getting Quran Ayah: {global_ayah}"
-    )
-
-    response = session.get(
-        url,
-        timeout=60
-    )
-
-    response.raise_for_status()
-
-    data = response.json()
-
-    if data.get("status") != "OK":
-        raise RuntimeError(
-            f"Quran API error: {global_ayah}"
-        )
-
-    ayah = data["data"]
-
-    return {
-        "global_number":
-            global_ayah,
-
-        "arabic":
-            ayah["text"],
-
-        "surah_name":
-            ayah["surah"]["englishName"],
-
-        "surah_number":
-            ayah["surah"]["number"],
-
-        "ayah_number":
-            ayah["numberInSurah"]
-    }
-
-
-# ============================================================
-# GET COMPLETE ALAFASY RECITATION
-#
-# IMPORTANT:
-# We now ask Al Quran Cloud API for the official
-# audio URL instead of hard-coding the 192 kbps URL.
-# ============================================================
-
-def get_quran_audio(
-    global_ayah,
-    index
+def prepare_nature_background(
+    source_files,
+    duration,
+    output_file
 ):
+    """
+    Combine 2–3 nature clips into one portrait video.
+    """
 
-    print()
-    print(
-        f"Getting Alafasy audio URL "
-        f"for Ayah {global_ayah}"
+    clip_count = len(source_files)
+
+    input_args = []
+
+    filters = []
+
+    for index, file_path in enumerate(
+        source_files
+    ):
+
+        input_args.extend([
+            "-stream_loop",
+            "-1",
+            "-i",
+            str(file_path)
+        ])
+
+        filters.append(
+            f"[{index}:v]"
+            f"scale={VIDEO_WIDTH}:{VIDEO_HEIGHT}:"
+            f"force_original_aspect_ratio=increase,"
+            f"crop={VIDEO_WIDTH}:{VIDEO_HEIGHT},"
+            f"setsar=1,"
+            f"fps={VIDEO_FPS},"
+            f"trim=duration={duration},"
+            f"setpts=PTS-STARTPTS"
+            f"[v{index}]"
+        )
+
+    concat_inputs = "".join(
+        f"[v{i}]"
+        for i in range(clip_count)
     )
 
-    api_url = (
-        f"https://api.alquran.cloud/v1/"
-        f"ayah/{global_ayah}/ar.alafasy"
+    filter_complex = ";".join(
+        filters
     )
 
-    response = session.get(
-        api_url,
-        timeout=60
+    filter_complex += (
+        f";{concat_inputs}"
+        f"concat=n={clip_count}:v=1:a=0,"
+        f"trim=duration={duration},"
+        f"setpts=PTS-STARTPTS,"
+        f"eq=brightness=-0.04:saturation=0.88,"
+        f"vignette"
+        f"[v]"
     )
-
-    response.raise_for_status()
-
-    data = response.json()
-
-    if data.get("status") != "OK":
-        raise RuntimeError(
-            f"Audio API error for Ayah "
-            f"{global_ayah}"
-        )
-
-    ayah_data = data.get("data", {})
-
-    audio_url = ayah_data.get("audio")
-
-    if not audio_url:
-
-        # Some API responses may provide
-        # multiple audio URLs.
-        audio_urls = (
-            ayah_data.get("audioSecondary")
-            or []
-        )
-
-        if audio_urls:
-            audio_url = audio_urls[0]
-
-    if not audio_url:
-
-        raise RuntimeError(
-            f"No Alafasy audio URL returned "
-            f"for Ayah {global_ayah}"
-        )
-
-    print()
-    print("Official audio URL returned by API:")
-    print(audio_url)
-
-    destination = (
-        ASSETS_DIR /
-        f"quran_{index}.mp3"
-    )
-
-    # --------------------------------------------------------
-    # Download API-provided URL
-    # --------------------------------------------------------
-
-    try:
-
-        download_file(
-            audio_url,
-            destination
-        )
-
-        print(
-            "Alafasy audio downloaded successfully."
-        )
-
-        return destination
-
-    except requests.HTTPError as first_error:
-
-        print()
-        print(
-            "API-provided audio URL failed:"
-        )
-
-        print(first_error)
-
-        # ----------------------------------------------------
-        # Fallback CDN URLs
-        #
-        # 128 is Alafasy's documented default bitrate.
-        # ----------------------------------------------------
-
-        fallback_bitrates = [
-            128,
-            64,
-            192,
-            48,
-            40,
-            32
-        ]
-
-        for bitrate in fallback_bitrates:
-
-            fallback_url = (
-                "https://cdn.islamic.network/"
-                f"quran/audio/{bitrate}/"
-                f"ar.alafasy/"
-                f"{global_ayah}.mp3"
-            )
-
-            print()
-            print(
-                f"Trying fallback "
-                f"{bitrate} kbps..."
-            )
-
-            try:
-
-                download_file(
-                    fallback_url,
-                    destination
-                )
-
-                print(
-                    f"Fallback {bitrate} kbps "
-                    f"download successful."
-                )
-
-                return destination
-
-            except requests.RequestException as error:
-
-                print(
-                    f"{bitrate} kbps failed: "
-                    f"{error}"
-                )
-
-        raise RuntimeError(
-            "Unable to download Alafasy "
-            f"audio for Ayah {global_ayah}."
-        ) from first_error
-
-
-# ============================================================
-# GET AUDIO DURATION
-# ============================================================
-
-def get_audio_duration(audio_file):
 
     command = [
-        "ffprobe",
-        "-v",
-        "error",
-        "-show_entries",
-        "format=duration",
-        "-of",
-        "default=noprint_wrappers=1:nokey=1",
-        str(audio_file)
+        "ffmpeg",
+        "-y",
+        *input_args,
+        "-filter_complex",
+        filter_complex,
+        "-map",
+        "[v]",
+        "-t",
+        str(duration),
+        "-an",
+        "-c:v",
+        "libx264",
+        "-preset",
+        "medium",
+        "-crf",
+        "18",
+        "-pix_fmt",
+        "yuv420p",
+        str(output_file)
     ]
 
-    result = subprocess.run(
-        command,
-        capture_output=True,
-        text=True,
-        check=True
-    )
-
-    duration = float(
-        result.stdout.strip()
-    )
-
-    print()
-    print(
-        f"COMPLETE RECITATION: "
-        f"{duration:.2f} seconds"
-    )
-
-    return duration
+    run_cmd(command)
 
 
 # ============================================================
-# ARABIC TEXT WRAPPING
+# NATURE SOUND
 # ============================================================
 
-def wrap_arabic_text(
-    draw,
-    text,
-    font,
-    max_width
+def download_nature_sound(
+    sound_info,
+    destination
 ):
+    download_file(
+        sound_info["url"],
+        destination
+    )
 
-    words = text.split()
-
-    lines = []
-    current_line = ""
-
-    for word in words:
-
-        test_line = (
-            word
-            if not current_line
-            else current_line + " " + word
-        )
-
-        bbox = draw.textbbox(
-            (0, 0),
-            test_line,
-            font=font,
-            direction="rtl",
-            language="ar"
-        )
-
-        width = (
-            bbox[2] -
-            bbox[0]
-        )
-
-        if width <= max_width:
-
-            current_line = test_line
-
-        else:
-
-            if current_line:
-                lines.append(
-                    current_line
-                )
-
-            current_line = word
-
-    if current_line:
-        lines.append(
-            current_line
-        )
-
-    return lines
+    return sound_info
 
 
 # ============================================================
-# CREATE ARABIC OVERLAY
+# TEXT IMAGE
 # ============================================================
 
-def create_text_overlay(
-    quran,
-    index
+def create_text_image(
+    arabic_text,
+    english_text,
+    reference,
+    output_file
 ):
+    """
+    Create transparent overlay similar to the
+    user's reference:
 
-    if not ARABIC_FONT.exists():
-        raise RuntimeError(
-            f"Missing font: {ARABIC_FONT}"
-        )
+    Arabic
+    English translation
+    Reference
+    """
 
-    overlay = Image.new(
+    image = Image.new(
         "RGBA",
-        (WIDTH, HEIGHT),
-        (0, 0, 0, 0)
+        (
+            VIDEO_WIDTH,
+            VIDEO_HEIGHT
+        ),
+        (
+            0,
+            0,
+            0,
+            0
+        )
     )
 
     draw = ImageDraw.Draw(
-        overlay
+        image
     )
 
-    arabic_text = quran["arabic"]
-
-    font_size = 110
-
-    while font_size >= 54:
-
-        font = ImageFont.truetype(
-            str(ARABIC_FONT),
-            font_size
-        )
-
-        lines = wrap_arabic_text(
-            draw,
-            arabic_text,
-            font,
-            900
-        )
-
-        if len(lines) <= 4:
-            break
-
-        font_size -= 4
-
-    line_spacing = int(
-        font_size * 0.35
+    arabic_font = ImageFont.truetype(
+        str(ARABIC_FONT),
+        ARABIC_FONT_SIZE
     )
 
-    line_heights = []
-
-    for line in lines:
-
-        bbox = draw.textbbox(
-            (0, 0),
-            line,
-            font=font,
-            direction="rtl",
-            language="ar"
-        )
-
-        line_heights.append(
-            bbox[3] -
-            bbox[1]
-        )
-
-    total_height = (
-        sum(line_heights)
-        +
-        line_spacing *
-        (len(lines) - 1)
+    english_font = ImageFont.truetype(
+        str(FONT_DIR / "NotoSans-Regular.ttf")
+        if (FONT_DIR / "NotoSans-Regular.ttf").exists()
+        else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        ENGLISH_FONT_SIZE
     )
-
-    center_y = 1070
-
-    start_y = (
-        center_y -
-        total_height // 2
-    )
-
-    y = start_y
-
-    # --------------------------------------------------------
-    # Arabic Quran text
-    # --------------------------------------------------------
-
-    for line, line_height in zip(
-        lines,
-        line_heights
-    ):
-
-        bbox = draw.textbbox(
-            (0, 0),
-            line,
-            font=font,
-            direction="rtl",
-            language="ar"
-        )
-
-        text_width = (
-            bbox[2] -
-            bbox[0]
-        )
-
-        x = (
-            WIDTH -
-            text_width
-        ) // 2
-
-        # Shadow
-        draw.text(
-            (
-                x + 3,
-                y + 5
-            ),
-            line,
-            font=font,
-            fill=(0, 0, 0, 190),
-            direction="rtl",
-            language="ar"
-        )
-
-        # Arabic
-        draw.text(
-            (x, y),
-            line,
-            font=font,
-            fill=(255, 255, 255, 255),
-            direction="rtl",
-            language="ar"
-        )
-
-        y += (
-            line_height +
-            line_spacing
-        )
-
-    # --------------------------------------------------------
-    # Surah / Verse reference
-    # --------------------------------------------------------
 
     reference_font = ImageFont.truetype(
-        str(ARABIC_FONT),
-        42
+        str(FONT_DIR / "NotoSans-Regular.ttf")
+        if (FONT_DIR / "NotoSans-Regular.ttf").exists()
+        else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        REFERENCE_FONT_SIZE
     )
 
-    reference = (
-        f"{quran['surah_name']} • "
-        f"Verse {quran['ayah_number']}"
+    arabic_bbox = draw.textbbox(
+        (0, 0),
+        arabic_text,
+        font=arabic_font,
+        direction="rtl",
+        language="ar"
     )
 
-    bbox = draw.textbbox(
+    arabic_width = (
+        arabic_bbox[2] -
+        arabic_bbox[0]
+    )
+
+    arabic_height = (
+        arabic_bbox[3] -
+        arabic_bbox[1]
+    )
+
+    english_bbox = draw.textbbox(
+        (0, 0),
+        english_text,
+        font=english_font
+    )
+
+    english_width = (
+        english_bbox[2] -
+        english_bbox[0]
+    )
+
+    english_height = (
+        english_bbox[3] -
+        english_bbox[1]
+    )
+
+    reference_bbox = draw.textbbox(
         (0, 0),
         reference,
         font=reference_font
     )
 
     reference_width = (
-        bbox[2] -
-        bbox[0]
+        reference_bbox[2] -
+        reference_bbox[0]
     )
 
-    reference_x = (
-        WIDTH -
-        reference_width
-    ) // 2
+    reference_height = (
+        reference_bbox[3] -
+        reference_bbox[1]
+    )
+
+    total_height = (
+        arabic_height +
+        25 +
+        english_height +
+        25 +
+        reference_height
+    )
+
+    center_y = int(
+        VIDEO_HEIGHT * 0.62
+    )
+
+    arabic_y = (
+        center_y -
+        total_height // 2
+    )
+
+    english_y = (
+        arabic_y +
+        arabic_height +
+        25
+    )
 
     reference_y = (
-        start_y +
-        total_height +
-        35
+        english_y +
+        english_height +
+        25
     )
 
+    # Arabic shadow
     draw.text(
         (
-            reference_x + 2,
-            reference_y + 3
+            VIDEO_WIDTH // 2 + 3,
+            arabic_y + 4
         ),
-        reference,
-        font=reference_font,
-        fill=(0, 0, 0, 170)
+        arabic_text,
+        font=arabic_font,
+        fill=(0, 0, 0, 210),
+        anchor="ma",
+        direction="rtl",
+        language="ar"
     )
 
+    # Arabic
     draw.text(
         (
-            reference_x,
+            VIDEO_WIDTH // 2,
+            arabic_y
+        ),
+        arabic_text,
+        font=arabic_font,
+        fill=(255, 255, 255, 255),
+        anchor="ma",
+        direction="rtl",
+        language="ar"
+    )
+
+    # English shadow
+    draw.text(
+        (
+            VIDEO_WIDTH // 2 + 2,
+            english_y + 3
+        ),
+        english_text,
+        font=english_font,
+        fill=(0, 0, 0, 190),
+        anchor="ma"
+    )
+
+    # English
+    draw.text(
+        (
+            VIDEO_WIDTH // 2,
+            english_y
+        ),
+        english_text,
+        font=english_font,
+        fill=(245, 245, 245, 255),
+        anchor="ma"
+    )
+
+    # Reference
+    draw.text(
+        (
+            VIDEO_WIDTH // 2,
             reference_y
         ),
         reference,
         font=reference_font,
-        fill=(235, 235, 235, 230)
+        fill=(220, 220, 220, 230),
+        anchor="ma"
     )
 
-    overlay_path = (
-        ASSETS_DIR /
-        f"overlay_{index}.png"
+    image.save(
+        output_file
     )
-
-    overlay.save(
-        overlay_path
-    )
-
-    return overlay_path
 
 
 # ============================================================
-# METADATA
+# WORD-BY-WORD TIMELINE
 # ============================================================
 
-def create_metadata(
-    quran,
-    topic,
-    index
+def create_overlay_segments(
+    arabic_text,
+    english_text,
+    reference,
+    audio_duration,
+    output_dir
 ):
-
-    surah = quran["surah_name"]
-    verse = quran["ayah_number"]
-
-    titles = [
-
-        f"Let This Quran Verse Bring Peace to Your Heart | {surah} {verse} #Shorts",
-
-        f"A Beautiful Reminder From the Quran | {surah} {verse} #Shorts",
-
-        f"Listen to This Powerful Quran Reminder | {surah} {verse} #Shorts",
-
-        f"One Quran Verse to Reflect On Today | {surah} {verse} #Shorts",
-
-        f"Find Peace in the Words of Allah | {surah} {verse} #Shorts",
-
-        f"A Moment of Peace With the Quran | {surah} {verse} #Shorts"
-    ]
-
-    title = random.choice(titles)
-
-    if len(title) > 95:
-
-        title = (
-            f"Quran Reminder | "
-            f"{surah} {verse} #Shorts"
-        )
-
-    description = f"""Listen to a complete recitation from the Holy Quran — {surah}, Verse {verse}.
-
-Take a quiet moment to listen, reflect and remember Allah.
-
-May the words of the Quran bring peace, guidance and strength to your heart.
-
-📖 Surah: {surah}
-🔢 Verse: {verse}
-
-🎙️ Recitation: Mishary Rashid Alafasy
-📜 Arabic Quran text: Al Quran Cloud / Uthmani text
-🌿 Nature footage: Pexels
-
-Created for peaceful Quran listening, reflection and Islamic reminders.
-
-#Quran #QuranRecitation #IslamicShorts #QuranShorts #Islam #Allah #IslamicReminder #Shorts
-"""
-
-    tags = [
-        "Quran",
-        "Quran recitation",
-        "Quran Shorts",
-        "Quran short",
-        "Islamic Shorts",
-        "Islam",
-        "Allah",
-        "Holy Quran",
-        "Quran reminder",
-        "Islamic reminder",
-        "beautiful Quran recitation",
-        "Alafasy",
-        "Mishary Alafasy",
-        surah,
-        f"{surah} {verse}",
-        topic
-    ]
-
-    metadata_path = (
-        OUTPUT_DIR /
-        f"metadata_{index}.txt"
+    arabic = arabic_words(
+        arabic_text
     )
 
-    with open(
-        metadata_path,
-        "w",
-        encoding="utf-8"
-    ) as f:
-
-        f.write("TITLE\n")
-        f.write("=====\n")
-        f.write(title)
-        f.write("\n\n")
-
-        f.write("DESCRIPTION\n")
-        f.write("===========\n")
-        f.write(description)
-        f.write("\n")
-
-        f.write("TAGS\n")
-        f.write("====\n")
-        f.write(
-            ", ".join(tags)
-        )
-        f.write("\n\n")
-
-        f.write("SURAH\n")
-        f.write("=====\n")
-        f.write(surah)
-        f.write("\n\n")
-
-        f.write("VERSE\n")
-        f.write("=====\n")
-        f.write(str(verse))
-        f.write("\n\n")
-
-        f.write("ARABIC AYAH\n")
-        f.write("===========\n")
-        f.write(quran["arabic"])
-        f.write("\n\n")
-
-        f.write("NATURE TOPIC\n")
-        f.write("============\n")
-        f.write(topic)
-        f.write("\n")
-
-    return title
-
-
-# ============================================================
-# CREATE MULTI-CLIP VIDEO
-# ============================================================
-
-def create_video(
-    nature_clips,
-    audio_file,
-    overlay_file,
-    output_file,
-    duration
-):
-
-    clip_count = len(
-        nature_clips
+    arabic_groups = make_word_groups(
+        arabic,
+        WORDS_PER_SCREEN_MIN,
+        WORDS_PER_SCREEN_MAX
     )
 
-    print()
-    print("=" * 70)
-    print(
-        f"CREATING {clip_count}-CLIP SHORT"
-    )
-
-    print(
-        f"RECITATION: "
-        f"{duration:.2f} seconds"
-    )
-
-    print("=" * 70)
-
-    final_duration = (
-        duration + 0.20
+    english_groups = make_translation_groups(
+        arabic_groups,
+        english_text
     )
 
     segment_duration = (
-        duration /
-        clip_count
+        audio_duration /
+        len(arabic_groups)
     )
+
+    segments = []
+
+    current_time = 0.0
+
+    for i, arabic_group in enumerate(
+        arabic_groups
+    ):
+
+        start = current_time
+
+        if i == len(arabic_groups) - 1:
+            end = audio_duration
+        else:
+            end = (
+                current_time +
+                segment_duration
+            )
+
+        arabic_segment = " ".join(
+            arabic_group
+        )
+
+        english_segment = (
+            english_groups[i]
+            if i < len(english_groups)
+            else english_text
+        )
+
+        image_file = (
+            output_dir /
+            f"overlay_{i:03d}.png"
+        )
+
+        create_text_image(
+            arabic_segment,
+            english_segment,
+            reference,
+            image_file
+        )
+
+        segments.append({
+            "start": start,
+            "end": end,
+            "image": image_file
+        })
+
+        current_time = end
+
+    return segments
+
+
+# ============================================================
+# FINAL VIDEO
+# ============================================================
+
+def create_final_video(
+    background,
+    audio,
+    nature_audio,
+    overlays,
+    duration,
+    output_file
+):
+    """
+    Combine:
+
+    Nature video
+    + Qur'an recitation
+    + subtle nature ambience
+    + changing Arabic/English overlays
+    """
+
+    overlay_inputs = []
 
     filter_parts = []
 
-    # --------------------------------------------------------
-    # Prepare each nature clip
-    # --------------------------------------------------------
+    previous = "[0:v]"
 
-    for i in range(
-        clip_count
+    for index, overlay in enumerate(
+        overlays
     ):
 
-        current_duration = (
-            segment_duration
+        input_index = index + 2
+
+        overlay_inputs.extend([
+            "-loop",
+            "1",
+            "-i",
+            str(overlay["image"])
+        ])
+
+        output_label = (
+            f"[ov{index}]"
         )
-
-        if i == clip_count - 1:
-
-            current_duration = (
-                duration -
-                segment_duration *
-                (clip_count - 1)
-            )
 
         filter_parts.append(
-            f"[{i}:v]"
-            f"scale={WIDTH}:{HEIGHT}:"
-            f"force_original_aspect_ratio=increase,"
-            f"crop={WIDTH}:{HEIGHT},"
-            f"fps=30,"
-            f"eq=brightness=-0.07:"
-            f"contrast=1.08:"
-            f"saturation=0.92,"
-            f"vignette,"
-            f"trim=duration={current_duration:.3f},"
-            f"setpts=PTS-STARTPTS"
-            f"[clip{i}]"
+            f"{previous}"
+            f"[{input_index}:v]"
+            f"overlay=0:0:"
+            f"enable='between(t,"
+            f"{overlay['start']},"
+            f"{overlay['end']})'"
+            f"{output_label}"
         )
 
-    # --------------------------------------------------------
-    # Join all nature clips
-    # --------------------------------------------------------
+        previous = output_label
 
-    concat_inputs = ""
+    video_label = previous
 
-    for i in range(
-        clip_count
-    ):
-
-        concat_inputs += (
-            f"[clip{i}]"
-        )
-
-    filter_parts.append(
-        concat_inputs
-        +
-        f"concat=n={clip_count}:"
-        f"v=1:a=0,"
-        f"setpts=PTS-STARTPTS"
-        f"[nature]"
-    )
-
-    # --------------------------------------------------------
-    # Arabic overlay
-    #
-    # Nature inputs = 0,1,2
-    # Audio = clip_count
-    # Overlay = clip_count + 1
-    # --------------------------------------------------------
-
-    overlay_input = (
-        clip_count + 1
+    audio_filter = (
+        "[1:a]aresample=48000,"
+        "volume=1.0[recitation];"
+        "[2:a]aresample=48000,"
+        f"volume={NATURE_AUDIO_VOLUME},"
+        "aloop=loop=-1:size=2147483647,"
+        f"atrim=duration={duration}[nature];"
+        "[recitation][nature]"
+        "amix=inputs=2:"
+        "duration=first:"
+        "dropout_transition=0"
+        "[audio]"
     )
 
     filter_parts.append(
-        f"[nature]"
-        f"[{overlay_input}:v]"
-        f"overlay=0:0:"
-        f"format=auto,"
-        f"format=yuv420p"
-        f"[v]"
+        audio_filter
     )
 
     filter_complex = ";".join(
         filter_parts
     )
 
-    # --------------------------------------------------------
-    # FFmpeg command
-    # --------------------------------------------------------
-
     command = [
         "ffmpeg",
-        "-y"
-    ]
+        "-y",
 
-    # Nature videos
-    for clip in nature_clips:
-
-        command += [
-            "-stream_loop",
-            "-1",
-            "-i",
-            str(clip)
-        ]
-
-    # Audio
-    command += [
         "-i",
-        str(audio_file)
-    ]
+        str(background),
 
-    # Overlay
-    command += [
         "-i",
-        str(overlay_file)
-    ]
+        str(audio),
 
-    command += [
+        "-i",
+        str(nature_audio),
+
+        *overlay_inputs,
+
         "-filter_complex",
         filter_complex,
 
         "-map",
-        "[v]",
+        video_label,
 
-        # Audio input index
         "-map",
-        f"{clip_count}:a:0",
+        "[audio]",
 
-        # Complete recitation + tiny safety margin
         "-t",
-        f"{final_duration:.3f}",
+        str(duration),
 
         "-c:v",
         "libx264",
@@ -1071,7 +1297,7 @@ def create_video(
         "medium",
 
         "-crf",
-        "19",
+        "18",
 
         "-pix_fmt",
         "yuv420p",
@@ -1082,36 +1308,297 @@ def create_video(
         "-b:a",
         "192k",
 
-        "-ar",
-        "48000",
-
         "-movflags",
         "+faststart",
 
         str(output_file)
     ]
 
-    result = subprocess.run(
-        command,
-        capture_output=True,
-        text=True
+    run_cmd(command)
+
+
+# ============================================================
+# METADATA
+# ============================================================
+
+def create_metadata(
+    index,
+    quran,
+    topic,
+    audio_license
+):
+    title = (
+        f"{quran['surah_name']} "
+        f"{quran['surah_number']}:{quran['ayah_number']} "
+        f"— A Reminder for the Heart"
     )
 
-    if result.returncode != 0:
+    description = f"""Listen, reflect, and remember.
 
-        print()
-        print("FFMPEG ERROR")
-        print("=" * 70)
-        print(result.stderr)
+Qur'an — Surah {quran['surah_name']} "
+f"({quran['surah_number']}:{quran['ayah_number']})
 
-        raise RuntimeError(
-            "FFmpeg failed."
+Arabic Qur'an text:
+Source: Tanzil Quran Text
+License: CC BY 3.0
+https://tanzil.net
+
+English translation:
+Marmaduke Pickthall (1930)
+Public domain.
+
+Qur'an recitation:
+CC0/public-domain recording from Wikimedia Commons.
+License: {audio_license}
+
+Background footage:
+Pexels.
+
+Nature ambience:
+CC0/public-domain Wikimedia Commons recording.
+
+This video is created for reflection, remembrance and learning.
+
+#Quran #QuranShorts #Islam #Allah #IslamicReminder #QuranRecitation #Ayah #Muslim #IslamicShorts #Nature
+"""
+
+    metadata_file = (
+        OUTPUT_DIR /
+        f"metadata_{index}.txt"
+    )
+
+    metadata_file.write_text(
+        f"TITLE:\n{title}\n\n"
+        f"DESCRIPTION:\n{description}\n",
+        encoding="utf-8"
+    )
+
+    return title, description
+
+
+# ============================================================
+# CREATE ONE SHORT
+# ============================================================
+
+def create_short(
+    index,
+    topic,
+    quran_audio_info
+):
+    print()
+    print("=" * 70)
+    print(f"CREATING SHORT {index}")
+    print("=" * 70)
+
+    surah = quran_audio_info[
+        "surah_number"
+    ]
+
+    ayah = quran_audio_info[
+        "ayah_number"
+    ]
+
+    # --------------------------------------------------------
+    # Get Qur'an text
+    # --------------------------------------------------------
+
+    # Convert Surah/Ayah to global number.
+    # Al Quran Cloud uses global ayah numbers.
+    #
+    # We calculate this by downloading the surah metadata.
+    #
+    surah_response = requests.get(
+        f"https://api.alquran.cloud/v1/surah/{surah}",
+        timeout=30
+    )
+
+    surah_response.raise_for_status()
+
+    surah_data = surah_response.json()["data"]
+
+    previous_count = 0
+
+    for s in range(1, surah):
+        r = requests.get(
+            f"https://api.alquran.cloud/v1/surah/{s}",
+            timeout=30
+        )
+        r.raise_for_status()
+        previous_count += len(
+            r.json()["data"]["ayahs"]
         )
 
-    print()
-    print(
-        "Video created successfully."
+    global_ayah = (
+        previous_count +
+        ayah
     )
+
+    quran = get_quran_data(
+        global_ayah
+    )
+
+    print(
+        f"Qur'an: "
+        f"{quran['surah_name']} "
+        f"{quran['surah_number']}:{quran['ayah_number']}"
+    )
+
+    # --------------------------------------------------------
+    # Download CC0 recitation
+    # --------------------------------------------------------
+
+    audio_url = quran_audio_info[
+        "url"
+    ]
+
+    audio_file = (
+        TEMP_DIR /
+        f"recitation_{index}.mp3"
+    )
+
+    download_file(
+        audio_url,
+        audio_file
+    )
+
+    audio_duration = get_duration(
+        audio_file
+    )
+
+    print(
+        f"Recitation duration: "
+        f"{audio_duration:.2f} seconds"
+    )
+
+    # --------------------------------------------------------
+    # Nature ambience
+    # --------------------------------------------------------
+
+    sound_info = random.choice(
+        NATURE_SOUNDS
+    )
+
+    nature_audio = (
+        TEMP_DIR /
+        f"nature_sound_{index}.ogg"
+    )
+
+    download_nature_sound(
+        sound_info,
+        nature_audio
+    )
+
+    # --------------------------------------------------------
+    # Nature video clips
+    # --------------------------------------------------------
+
+    clip_count = (
+        2
+        if audio_duration <= 12
+        else 3
+    )
+
+    selected_topics = random.sample(
+        TOPICS,
+        clip_count
+    )
+
+    nature_clips = []
+
+    for clip_number, clip_topic in enumerate(
+        selected_topics,
+        start=1
+    ):
+
+        clip_file = (
+            TEMP_DIR /
+            f"nature_{index}_{clip_number}.mp4"
+        )
+
+        download_nature_video(
+            clip_topic,
+            clip_file
+        )
+
+        nature_clips.append(
+            clip_file
+        )
+
+    # --------------------------------------------------------
+    # Background
+    # --------------------------------------------------------
+
+    background = (
+        TEMP_DIR /
+        f"background_{index}.mp4"
+    )
+
+    prepare_nature_background(
+        nature_clips,
+        audio_duration,
+        background
+    )
+
+    # --------------------------------------------------------
+    # Word-by-word overlays
+    # --------------------------------------------------------
+
+    reference = (
+        f"{quran['surah_name']} "
+        f"• {quran['surah_number']}:{quran['ayah_number']}"
+    )
+
+    overlay_dir = (
+        TEMP_DIR /
+        f"overlays_{index}"
+    )
+
+    overlay_dir.mkdir(
+        exist_ok=True
+    )
+
+    overlays = create_overlay_segments(
+        quran["arabic"],
+        quran["english"],
+        reference,
+        audio_duration,
+        overlay_dir
+    )
+
+    # --------------------------------------------------------
+    # Final video
+    # --------------------------------------------------------
+
+    output_file = (
+        OUTPUT_DIR /
+        f"nature_quran_short_{index}.mp4"
+    )
+
+    create_final_video(
+        background,
+        audio_file,
+        nature_audio,
+        overlays,
+        audio_duration,
+        output_file
+    )
+
+    # --------------------------------------------------------
+    # Metadata
+    # --------------------------------------------------------
+
+    create_metadata(
+        index,
+        quran,
+        topic,
+        quran_audio_info["license"]
+    )
+
+    print(
+        f"Created: {output_file}"
+    )
+
+    return output_file
 
 
 # ============================================================
@@ -1120,10 +1607,8 @@ def create_video(
 
 def main():
 
-    print()
     print("=" * 70)
-    print("NATURE + QURAN SHORTS")
-    print("3 VIDEOS / RUN")
+    print("NATURE QURAN SHORTS GENERATOR")
     print("=" * 70)
 
     if not PEXELS_API_KEY:
@@ -1133,242 +1618,71 @@ def main():
 
     if not ARABIC_FONT.exists():
         raise RuntimeError(
-            f"Missing font: {ARABIC_FONT}"
+            f"Arabic font missing: {ARABIC_FONT}"
         )
 
-    # --------------------------------------------------------
-    # Clean output
-    # --------------------------------------------------------
-
-    for file in OUTPUT_DIR.glob("*"):
-
-        if file.is_file():
-            file.unlink()
-
-    # --------------------------------------------------------
-    # Select 3 unique Ayahs
-    # --------------------------------------------------------
-
-    selected_ayahs = random.sample(
-        QURAN_AYAHS,
-        VIDEO_COUNT
+    # Find available CC0 individual verse recordings.
+    candidates = (
+        get_cc0_verse_audio_candidates()
     )
 
-    # --------------------------------------------------------
-    # Select 3 different main nature topics
-    # --------------------------------------------------------
+    if len(candidates) < SHORT_COUNT:
+        raise RuntimeError(
+            "Not enough CC0 individual "
+            "verse recordings available."
+        )
 
-    selected_topics = random.sample(
-        TOPICS,
-        VIDEO_COUNT
+    # Make sure today's three are different.
+    selected = random.sample(
+        candidates,
+        SHORT_COUNT
     )
 
-    print()
-    print("TODAY'S VIDEOS")
-    print("-" * 70)
-
-    for i in range(
-        VIDEO_COUNT
+    for index, candidate in enumerate(
+        selected,
+        start=1
     ):
 
-        print(
-            f"{i + 1}. "
-            f"{selected_topics[i]} | "
-            f"Ayah {selected_ayahs[i]}"
-        )
-
-    # ========================================================
-    # CREATE THREE SHORTS
-    # ========================================================
-
-    for index in range(
-        1,
-        VIDEO_COUNT + 1
-    ):
-
-        topic = selected_topics[
-            index - 1
-        ]
-
-        global_ayah = selected_ayahs[
-            index - 1
-        ]
-
-        print()
-        print()
-        print("#" * 70)
-        print(
-            f"SHORT {index} / {VIDEO_COUNT}"
-        )
-        print("#" * 70)
-
-        # ----------------------------------------------------
-        # COMPLETE AYAH
-        # ----------------------------------------------------
-
-        quran = get_quran_ayah(
-            global_ayah
-        )
-
-        # ----------------------------------------------------
-        # COMPLETE RECITATION
-        # ----------------------------------------------------
-
-        audio_file = get_quran_audio(
-            global_ayah,
-            index
-        )
-
-        # ----------------------------------------------------
-        # ACTUAL AUDIO LENGTH
-        # ----------------------------------------------------
-
-        duration = get_audio_duration(
-            audio_file
-        )
-
-        # ----------------------------------------------------
-        # 2 OR 3 NATURE CLIPS
-        # ----------------------------------------------------
-
-        if duration <= 12:
-            clip_count = 2
-        else:
-            clip_count = 3
-
         print()
         print(
-            f"Using {clip_count} nature clips."
+            f"SHORT {index}: "
+            f"Surah {candidate['surah_number']}, "
+            f"Ayah {candidate['ayah_number']}"
         )
 
-        # ----------------------------------------------------
-        # Unique nature topics
-        # ----------------------------------------------------
-
-        remaining_topics = [
-            x
-            for x in TOPICS
-            if x != topic
-        ]
-
-        clip_topics = [
-            topic
-        ]
-
-        clip_topics += random.sample(
-            remaining_topics,
-            clip_count - 1
+        audio_url, license_name, license_url = (
+            get_commons_audio_url(
+                candidate["title"]
+            )
         )
 
-        # ----------------------------------------------------
-        # Download nature clips
-        # ----------------------------------------------------
+        audio_info = {
+            "title": candidate["title"],
+            "url": audio_url,
+            "license": license_name,
+            "license_url": license_url,
+            "surah_number": candidate[
+                "surah_number"
+            ],
+            "ayah_number": candidate[
+                "ayah_number"
+            ],
+        }
 
-        nature_clips = []
-
-        for clip_number, clip_topic in enumerate(
-            clip_topics,
-            start=1
-        ):
-
-            print()
-            print(
-                f"Clip {clip_number}: "
-                f"{clip_topic}"
-            )
-
-            clip = get_pexels_video(
-                clip_topic,
-                index,
-                clip_number
-            )
-
-            nature_clips.append(
-                clip
-            )
-
-        # ----------------------------------------------------
-        # Arabic overlay
-        # ----------------------------------------------------
-
-        overlay_file = create_text_overlay(
-            quran,
-            index
+        topic = random.choice(
+            TOPICS
         )
 
-        # ----------------------------------------------------
-        # Metadata
-        # ----------------------------------------------------
-
-        title = create_metadata(
-            quran,
+        create_short(
+            index,
             topic,
-            index
+            audio_info
         )
-
-        # ----------------------------------------------------
-        # Final video
-        # ----------------------------------------------------
-
-        output_file = (
-            OUTPUT_DIR /
-            f"nature_quran_short_{index}.mp4"
-        )
-
-        create_video(
-            nature_clips,
-            audio_file,
-            overlay_file,
-            output_file,
-            duration
-        )
-
-        print()
-        print(
-            f"SHORT {index} COMPLETE"
-        )
-
-        print(
-            f"Title: {title}"
-        )
-
-        print(
-            f"Complete recitation: "
-            f"{duration:.2f} seconds"
-        )
-
-        print(
-            f"Nature clips: "
-            f"{clip_count}"
-        )
-
-        print(
-            f"Output: "
-            f"{output_file.name}"
-        )
-
-    # ========================================================
-    # FINAL CHECK
-    # ========================================================
 
     print()
     print("=" * 70)
     print("ALL 3 SHORTS CREATED SUCCESSFULLY")
     print("=" * 70)
-
-    for file in sorted(
-        OUTPUT_DIR.glob("*.mp4")
-    ):
-
-        size_mb = (
-            file.stat().st_size /
-            (1024 * 1024)
-        )
-
-        print(
-            f"{file.name}: "
-            f"{size_mb:.2f} MB"
-        )
 
 
 if __name__ == "__main__":
