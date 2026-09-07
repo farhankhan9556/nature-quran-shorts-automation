@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ONLINE EARNING SHORTS GENERATOR V6
+ONLINE EARNING SHORTS GENERATOR V7
 
 Main improvements:
 - One continuous Edge-TTS narration per Short (no chopped voice between slides).
@@ -29,7 +29,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import requests
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageChops
 
 try:
     import edge_tts
@@ -56,7 +56,7 @@ TREND_WINDOW_DAYS = int(os.getenv("TREND_WINDOW_DAYS", "7"))
 
 ROOT = Path(__file__).resolve().parent
 OUTPUT_DIR = ROOT / "output"
-WORK_DIR = ROOT / "_work_reference_style_v6"
+WORK_DIR = ROOT / "_work_reference_style_v7"
 FONTS_DIR = ROOT / "fonts"
 
 REGULAR_FONT = FONTS_DIR / "NotoSans-Regular.ttf"
@@ -601,150 +601,232 @@ def align_sentences(sentences, boundaries, total_duration):
 
 # ------------------------------------------------------------
 # CAPTION DESIGN
-# ------------------------------------------------------------
-def _draw_rounded_card(base, box, fill, outline=None, radius=28, width=2):
+# -------------------------------------------------def _rounded_gradient_card(base, box, top_rgb, bottom_rgb, alpha=205, radius=34):
+    """Draw a polished translucent gradient card with a subtle border."""
+    x1, y1, x2, y2 = map(int, box)
+    layer = Image.new("RGBA", (x2 - x1, y2 - y1), (0, 0, 0, 0))
+    px = layer.load()
+    h = max(1, y2 - y1)
+
+    for yy in range(h):
+        t = yy / max(1, h - 1)
+        r = int(top_rgb[0] * (1-t) + bottom_rgb[0] * t)
+        g = int(top_rgb[1] * (1-t) + bottom_rgb[1] * t)
+        b = int(top_rgb[2] * (1-t) + bottom_rgb[2] * t)
+        for xx in range(x2 - x1):
+            px[xx, yy] = (r, g, b, alpha)
+
+    mask = Image.new("L", layer.size, 0)
+    md = ImageDraw.Draw(mask)
+    md.rounded_rectangle((0, 0, layer.width-1, layer.height-1), radius=radius, fill=255)
+    layer.putalpha(ImageChops.multiply(layer.getchannel("A"), mask))
+    base.alpha_composite(layer, (x1, y1))
+
     d = ImageDraw.Draw(base)
-    d.rounded_rectangle(box, radius=radius, fill=fill, outline=outline, width=width)
+    d.rounded_rectangle(
+        (x1, y1, x2, y2),
+        radius=radius,
+        outline=(255, 255, 255, 105),
+        width=2,
+    )
 
 
 def _step_font_size(step_count):
-    # Keep the complete stack readable while preserving a large mobile-first type.
     if step_count <= 3:
-        return 57
+        return 55
     if step_count <= 4:
-        return 51
+        return 50
     if step_count <= 5:
-        return 45
-    return 40
+        return 44
+    return 39
+
+
+def _fit_step_text(draw, text, font, max_width):
+    """Wrap without cutting words whenever possible."""
+    lines = wrap(draw, text.upper(), font, max_width, stroke=1)
+    if len(lines) <= STEP_MAX_LINES:
+        return lines
+
+    # If the last line would overflow, use a slightly smaller font.
+    size = font.size
+    while size > 32:
+        size -= 2
+        test_font = F(size, True)
+        lines = wrap(draw, text.upper(), test_font, max_width, stroke=1)
+        if len(lines) <= STEP_MAX_LINES:
+            return lines, test_font
+    return lines[:STEP_MAX_LINES], font
 
 
 def caption_image(completed_steps, current_step=None, current_words=None):
     """
-    V5 reference-style step board.
-
-    Behaviour:
-      * No unrelated title/pill/progress text.
-      * Every spoken sentence becomes ONE numbered step.
-      * The current step grows word-by-word while the voice speaks.
-      * Previous steps stay visible instead of disappearing.
-      * The current step is visually stronger; completed steps remain readable.
-      * The layout is intentionally clean and similar in structure to the
-        supplied numbered-step reference image, but uses original styling.
+    V7 polished step-board:
+      - Elegant numbered circles.
+      - Thin vertical connector between steps.
+      - Soft glass-style cards with a subtle accent edge.
+      - Current step is brighter and larger.
+      - Spoken words build progressively.
+      - Completed steps remain visible.
+      - No unrelated UI text.
     """
     img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
 
-    # Very subtle bottom readability gradient. It does not hide the footage.
-    panel = Image.new("RGBA", (W, 980), (0, 0, 0, 0))
+    # Gentle readability veil only behind the step area.
+    panel = Image.new("RGBA", (W, 1050), (0, 0, 0, 0))
     pd = ImageDraw.Draw(panel)
-    for y in range(980):
-        alpha = int(120 * (y / 980) ** 2)
-        pd.line((0, y, W, y), fill=(0, 0, 0, alpha))
-    img.alpha_composite(panel, (0, H - 980))
+    for yy in range(1050):
+        alpha = int(105 * (yy / 1050) ** 2)
+        pd.line((0, yy, W, yy), fill=(0, 0, 0, alpha))
+    img.alpha_composite(panel, (0, H - 1050))
 
     d = ImageDraw.Draw(img)
 
     steps = list(completed_steps)
     if current_step is not None and current_words:
         steps.append(" ".join(current_words))
-
     if not steps:
         return img
 
-    # Put the step board in the lower/middle portion so the background remains visible.
     font_size = _step_font_size(len(steps))
-    font = F(font_size, True)
-    small_font = F(max(31, font_size - 12), True)
+    base_font = F(font_size, True)
 
+    card_left = 48
+    card_right = W - 48
     circle_x = 112
-    text_x = 175
-    card_left = 62
-    card_right = W - 62
+    text_x = 174
+    max_text_width = card_right - text_x - 34
 
     rendered = []
     for i, text in enumerate(steps):
-        lines = wrap(d, text.upper(), font, 790, stroke=2)
-        lines = lines[:STEP_MAX_LINES]
-        rendered.append((i, lines))
+        result = _fit_step_text(d, text, base_font, max_text_width)
+        if isinstance(result, tuple):
+            lines, font = result
+        else:
+            lines, font = result, base_font
+        rendered.append((i, lines, font))
 
-    line_h = font.size + 6
-    card_gap = 12
+    line_heights = [font.size + 7 for _, _, font in rendered]
     card_heights = [
-        max(88, len(lines) * line_h + 34)
-        for _, lines in rendered
+        max(92, len(lines) * lh + 34)
+        for (_, lines, font), lh in zip(rendered, line_heights)
     ]
-    total_h = sum(card_heights) + card_gap * (len(card_heights) - 1)
+    gap = 14
+    total_h = sum(card_heights) + gap * (len(card_heights) - 1)
 
-    # Keep the board centered vertically, but biased slightly lower.
-    top = max(560, min(900, int(H - 300 - total_h)))
+    # Keep enough room for the background hero and avoid clipping on long stacks.
+    top = max(500, min(910, int(H - 305 - total_h)))
+    if top + total_h > H - 95:
+        top = H - 95 - total_h
 
+    # Connector line first, so it sits behind the numbered circles.
+    y_positions = []
     y = top
-    for idx, lines in rendered:
+    for h in card_heights:
+        y_positions.append(y)
+        y += h + gap
+
+    if len(y_positions) > 1:
+        for a, b, ha, hb in zip(
+            y_positions[:-1],
+            y_positions[1:],
+            card_heights[:-1],
+            card_heights[1:],
+        ):
+            y1 = int(a + ha / 2 + 29)
+            y2 = int(b + hb / 2 - 29)
+            d.line((circle_x, y1, circle_x, y2), fill=(255, 255, 255, 125), width=3)
+
+    for pos, ((idx, lines, font), h) in enumerate(zip(rendered, card_heights)):
+        y = y_positions[pos]
         is_current = current_step is not None and idx == len(rendered) - 1
 
-        # Transparent card; no large opaque panel.
+        # Alternating subtle tones keep the stack visually alive.
         if is_current:
-            fill = (8, 15, 25, 188)
-            outline = (255, 255, 255, 210)
+            top_rgb = (20, 46, 74)
+            bottom_rgb = (8, 24, 42)
+            alpha = 222
+            accent = (96, 205, 255, 255)
         else:
-            fill = (5, 10, 18, 135)
-            outline = (255, 255, 255, 95)
+            top_rgb = (20, 27, 37)
+            bottom_rgb = (9, 14, 22)
+            alpha = 164
+            accent = (255, 255, 255, 95)
 
-        h = card_heights[idx]
-        _draw_rounded_card(
+        _rounded_gradient_card(
             img,
             (card_left, y, card_right, y + h),
-            fill,
-            outline,
-            radius=30,
-            width=2,
+            top_rgb,
+            bottom_rgb,
+            alpha=alpha,
+            radius=32,
         )
 
-        # Number circle.
+        # Small accent strip gives the current step a premium visual cue.
+        d.rounded_rectangle(
+            (card_left + 4, y + 7, card_left + 10, y + h - 7),
+            radius=4,
+            fill=accent,
+        )
+
+        # Number badge: outer ring + inner disc.
         cy = y + h / 2
-        r = 27
+        outer_r = 31
+        inner_r = 24
+
         d.ellipse(
-            (circle_x-r, cy-r, circle_x+r, cy+r),
-            fill=(255, 255, 255, 235) if is_current else (255, 255, 255, 175),
+            (circle_x-outer_r, cy-outer_r, circle_x+outer_r, cy+outer_r),
+            fill=(8, 14, 21, 225),
+            outline=(255, 255, 255, 120),
+            width=2,
+        )
+        d.ellipse(
+            (circle_x-inner_r, cy-inner_r, circle_x+inner_r, cy+inner_r),
+            fill=(255, 255, 255, 245) if is_current else (210, 219, 228, 225),
         )
 
         number = str(idx + 1)
-        nb = d.textbbox((0, 0), number, font=small_font)
+        number_font = F(29 if len(number) < 2 else 25, True)
+        nb = d.textbbox((0, 0), number, font=number_font)
         nw, nh = nb[2] - nb[0], nb[3] - nb[1]
         d.text(
-            (circle_x - nw/2, cy - nh/2 - 3),
+            (circle_x - nw/2, cy - nh/2 - 2),
             number,
-            font=small_font,
-            fill=(0, 0, 0, 255),
+            font=number_font,
+            fill=(7, 13, 20, 255),
         )
 
-        # Sentence text.
+        # Current step gets a tiny "active" dot.
+        if is_current:
+            d.ellipse(
+                (card_right - 35, y + 17, card_right - 21, y + 31),
+                fill=(96, 205, 255, 240),
+            )
+
+        # Text with restrained shadow: cleaner than a heavy black stroke.
+        line_h = font.size + 7
         text_y = y + (h - len(lines) * line_h) / 2 - 2
+
         for line in lines:
-            tw = text_width(d, line, font, 2)
-            # Never let a long line run into the number circle.
-            x = min(text_x, card_right - 35 - tw)
+            tw = text_width(d, line, font, 1)
+            x = min(text_x, card_right - 30 - tw)
 
             d.text(
-                (x + 3, text_y + 4),
+                (x + 2, text_y + 3),
                 line,
                 font=font,
-                fill=(0, 0, 0, 225),
-                stroke_width=5,
-                stroke_fill=(0, 0, 0, 210),
+                fill=(0, 0, 0, 205),
             )
             d.text(
                 (x, text_y),
                 line,
                 font=font,
-                fill=(255, 255, 255, 255) if is_current else (224, 229, 236, 235),
-                stroke_width=2,
-                stroke_fill=(0, 0, 0, 255),
+                fill=(255, 255, 255, 255) if is_current else (235, 239, 244, 238),
             )
             text_y += line_h
 
-        y += h + card_gap
-
     return img
+
+return img
 
 
 def make_caption_frames(folder, sentence_data, total_duration, word_boundaries=None):
