@@ -33,13 +33,13 @@ VIDEO_WIDTH = 1080
 VIDEO_HEIGHT = 1920
 VIDEO_FPS = 30
 
-# Number of Shorts generated per GitHub Actions run
-SHORT_COUNT = 2
+# EXACTLY 3 VIDEOS PER RUN
+SHORT_COUNT = 3
 
-# Test video length
+# Target length
 TARGET_SECONDS = 15
 
-# Microsoft Edge TTS voice
+# AI voice
 VOICE = "en-US-GuyNeural"
 
 # Slightly faster voice for Shorts
@@ -57,7 +57,6 @@ TOPICS = [
 
     {
         "topic": "TikTok earning",
-
         "query": "person using smartphone social media",
 
         "hook": "Want to earn from TikTok?",
@@ -73,7 +72,6 @@ TOPICS = [
 
     {
         "topic": "Affiliate marketing",
-
         "query": "laptop online shopping business",
 
         "hook": "Want to start affiliate marketing?",
@@ -88,7 +86,6 @@ TOPICS = [
 
     {
         "topic": "AI freelancing",
-
         "query": "person working laptop artificial intelligence",
 
         "hook": "AI can help you freelance faster.",
@@ -103,7 +100,6 @@ TOPICS = [
 
     {
         "topic": "YouTube Shorts",
-
         "query": "creator recording video smartphone",
 
         "hook": "Starting a YouTube Shorts channel?",
@@ -118,7 +114,6 @@ TOPICS = [
 
     {
         "topic": "Digital products",
-
         "query": "laptop digital product creator",
 
         "hook": "Want income from a digital product?",
@@ -133,7 +128,6 @@ TOPICS = [
 
     {
         "topic": "Freelancing",
-
         "query": "freelancer laptop home office",
 
         "hook": "No clients yet? Try this.",
@@ -148,7 +142,6 @@ TOPICS = [
 
     {
         "topic": "Online selling",
-
         "query": "small business online seller laptop",
 
         "hook": "Want to sell online with less risk?",
@@ -163,8 +156,7 @@ TOPICS = [
 
     {
         "topic": "Remote work",
-
-        "query": "remote worker laptop coffee",
+        "query": "remote worker laptop home office",
 
         "hook": "Looking for remote income?",
 
@@ -177,11 +169,68 @@ TOPICS = [
         "cta": "Follow for realistic earning ideas!"
     },
 
+    {
+        "topic": "Print on demand",
+        "query": "designer laptop graphic design",
+
+        "hook": "Want to try print on demand?",
+
+        "body": (
+            "Create original designs for a specific audience, test "
+            "different ideas, and track which products actually sell."
+        ),
+
+        "cta": "Follow for more online business tips!"
+    },
+
+    {
+        "topic": "Online courses",
+        "query": "online teacher laptop course",
+
+        "hook": "Know something people want to learn?",
+
+        "body": (
+            "Turn your knowledge into a focused mini course, "
+            "template or guide that solves one clear problem."
+        ),
+
+        "cta": "Follow for more digital income ideas!"
+    },
+
+    {
+        "topic": "AI tools",
+        "query": "AI technology laptop workspace",
+
+        "hook": "Don't just use AI. Learn a workflow.",
+
+        "body": (
+            "Find repetitive work businesses already pay for, "
+            "use AI to speed it up, and offer the finished service."
+        ),
+
+        "cta": "Follow for practical AI business tips!"
+    },
+
+    {
+        "topic": "Side hustle",
+        "query": "young entrepreneur laptop home office",
+
+        "hook": "Want to start a side hustle?",
+
+        "body": (
+            "Start with one skill you can improve quickly, "
+            "solve a real problem, and reinvest your first earnings "
+            "into improving the service."
+        ),
+
+        "cta": "Follow for realistic side hustle ideas!"
+    }
+
 ]
 
 
 # ============================================================
-# BASIC HELPERS
+# COMMAND RUNNER
 # ============================================================
 
 def run_cmd(command):
@@ -204,23 +253,33 @@ def run_cmd(command):
         print(result.stderr)
 
         raise RuntimeError(
-            f"Command failed with exit code {result.returncode}"
+            f"Command failed with exit code "
+            f"{result.returncode}"
         )
 
     return result.stdout.strip()
 
 
+# ============================================================
+# GET MEDIA DURATION
+# ============================================================
+
 def get_duration(file_path):
 
     output = run_cmd([
+
         "ffprobe",
         "-v",
         "error",
+
         "-show_entries",
         "format=duration",
+
         "-of",
         "default=noprint_wrappers=1:nokey=1",
+
         str(file_path)
+
     ])
 
     return float(output)
@@ -230,15 +289,26 @@ def get_duration(file_path):
 # DOWNLOAD FILE
 # ============================================================
 
-def download_file(url, destination, headers=None):
+def download_file(
+    url,
+    destination,
+    headers=None
+):
 
-    print(f"Downloading: {url}")
+    print(
+        f"Downloading: {url}"
+    )
 
     response = requests.get(
+
         url,
+
         headers=headers or {},
+
         timeout=180,
+
         allow_redirects=True
+
     )
 
     response.raise_for_status()
@@ -250,7 +320,8 @@ def download_file(url, destination, headers=None):
     if destination.stat().st_size < 1000:
 
         raise RuntimeError(
-            f"Downloaded file is unexpectedly small: {destination}"
+            f"Downloaded file is unexpectedly small: "
+            f"{destination}"
         )
 
     return destination
@@ -277,13 +348,19 @@ def search_pexels_video(query):
         },
 
         params={
+
             "query": query,
+
             "orientation": "portrait",
+
             "size": "medium",
+
             "per_page": 20
+
         },
 
         timeout=60
+
     )
 
     response.raise_for_status()
@@ -299,7 +376,9 @@ def search_pexels_video(query):
             f"No Pexels video found for: {query}"
         )
 
+
     usable = []
+
 
     for video in videos:
 
@@ -308,30 +387,46 @@ def search_pexels_video(query):
             []
         ):
 
-            link = video_file.get("link")
+            link = video_file.get(
+                "link"
+            )
 
-            width = video_file.get(
-                "width"
-            ) or 0
+            width = (
+                video_file.get("width")
+                or 0
+            )
 
-            height = video_file.get(
-                "height"
-            ) or 0
+            height = (
+                video_file.get("height")
+                or 0
+            )
+
 
             if (
+
                 link
+
                 and height >= width
+
                 and height >= 720
+
             ):
 
                 usable.append({
+
                     "url": link,
+
                     "width": width,
+
                     "height": height
+
                 })
 
 
-    # Fallback
+    # --------------------------------------------------------
+    # Fallback if portrait footage isn't available
+    # --------------------------------------------------------
+
     if not usable:
 
         for video in videos:
@@ -348,13 +443,23 @@ def search_pexels_video(query):
                 if link:
 
                     usable.append({
+
                         "url": link,
-                        "width": video_file.get(
-                            "width"
-                        ) or 1080,
-                        "height": video_file.get(
-                            "height"
-                        ) or 1920
+
+                        "width": (
+                            video_file.get(
+                                "width"
+                            )
+                            or 1080
+                        ),
+
+                        "height": (
+                            video_file.get(
+                                "height"
+                            )
+                            or 1920
+                        )
+
                     })
 
 
@@ -369,6 +474,10 @@ def search_pexels_video(query):
         usable
     )
 
+
+# ============================================================
+# DOWNLOAD PEXELS CLIP
+# ============================================================
 
 def download_pexels_clip(
     query,
@@ -395,9 +504,13 @@ async def generate_voice_async(
 ):
 
     communicate = edge_tts.Communicate(
+
         text,
+
         VOICE,
+
         rate=VOICE_RATE
+
     )
 
     await communicate.save(
@@ -411,10 +524,12 @@ def generate_voice(
 ):
 
     asyncio.run(
+
         generate_voice_async(
             text,
             output_file
         )
+
     )
 
 
@@ -442,14 +557,19 @@ def get_font(size):
 
     ]
 
+
     for font_path in candidates:
 
         if font_path.exists():
 
             return ImageFont.truetype(
+
                 str(font_path),
+
                 size
+
             )
+
 
     return ImageFont.load_default()
 
@@ -479,23 +599,35 @@ def wrap_text(
 
     current = ""
 
+
     for word in words:
 
         test = (
+
             word
+
             if not current
+
             else current + " " + word
+
         )
 
+
         box = draw.textbbox(
+
             (0, 0),
+
             test,
+
             font=font
+
         )
+
 
         width = (
             box[2] - box[0]
         )
+
 
         if width <= max_width:
 
@@ -504,6 +636,7 @@ def wrap_text(
         else:
 
             if current:
+
                 lines.append(
                     current
                 )
@@ -517,6 +650,7 @@ def wrap_text(
             current
         )
 
+
     return lines
 
 
@@ -525,20 +659,35 @@ def wrap_text(
 # ============================================================
 
 def create_overlay(
+
     title,
+
     body,
+
     badge,
+
     output_file
+
 ):
 
     image = Image.new(
+
         "RGBA",
+
         (
             VIDEO_WIDTH,
             VIDEO_HEIGHT
         ),
-        (0, 0, 0, 0)
+
+        (
+            0,
+            0,
+            0,
+            0
+        )
+
     )
+
 
     draw = ImageDraw.Draw(
         image
@@ -546,47 +695,54 @@ def create_overlay(
 
 
     title_font = get_font(
-        76
+        72
     )
 
     body_font = get_font(
-        44
+        42
     )
 
     badge_font = get_font(
-        30
+        28
     )
 
 
-    # Main dark panel
+    # --------------------------------------------------------
+    # Main glass-style panel
+    # --------------------------------------------------------
+
     draw.rounded_rectangle(
 
         (
-            60,
-            560,
-            1020,
-            1430
+            55,
+            520,
+            1025,
+            1435
         ),
 
-        radius=50,
+        radius=55,
 
         fill=(
             0,
             0,
             0,
-            155
+            165
         )
+
     )
 
 
-    # Badge
+    # --------------------------------------------------------
+    # Top badge
+    # --------------------------------------------------------
+
     draw.rounded_rectangle(
 
         (
-            100,
-            610,
-            450,
-            690
+            95,
+            575,
+            455,
+            655
         ),
 
         radius=30,
@@ -597,6 +753,7 @@ def create_overlay(
             255,
             235
         )
+
     )
 
 
@@ -604,7 +761,7 @@ def create_overlay(
 
         (
             275,
-            650
+            615
         ),
 
         badge.upper(),
@@ -618,18 +775,26 @@ def create_overlay(
         ),
 
         anchor="mm"
+
     )
 
 
+    # --------------------------------------------------------
     # Title
+    # --------------------------------------------------------
+
     title_lines = wrap_text(
+
         title,
+
         title_font,
+
         820
+
     )
 
 
-    y = 770
+    y = 745
 
 
     for line in title_lines[:3]:
@@ -655,25 +820,33 @@ def create_overlay(
                 0,
                 0,
                 0,
-                180
+                190
             )
+
         )
 
         y += 95
 
 
+    # --------------------------------------------------------
     # Body
+    # --------------------------------------------------------
+
     body_lines = wrap_text(
+
         body,
+
         body_font,
+
         800
+
     )
 
 
     y += 45
 
 
-    for line in body_lines[:5]:
+    for line in body_lines[:7]:
 
         draw.text(
 
@@ -687,25 +860,29 @@ def create_overlay(
             font=body_font,
 
             fill=(
-                235,
-                235,
-                235
+                240,
+                240,
+                240
             ),
 
             anchor="mm"
+
         )
 
-        y += 62
+        y += 58
 
 
-    # Progress bar
+    # --------------------------------------------------------
+    # Bottom progress bar
+    # --------------------------------------------------------
+
     draw.rounded_rectangle(
 
         (
             100,
             1540,
             980,
-            1555
+            1556
         ),
 
         radius=8,
@@ -716,6 +893,7 @@ def create_overlay(
             255,
             100
         )
+
     )
 
 
@@ -729,14 +907,21 @@ def create_overlay(
 # ============================================================
 
 def create_background_video(
+
     clips,
+
     duration,
+
     output_file
+
 ):
 
     segment_duration = (
+
         duration / len(clips)
+
     )
+
 
     inputs = []
 
@@ -748,29 +933,45 @@ def create_background_video(
     ):
 
         inputs.extend([
+
             "-stream_loop",
             "-1",
+
             "-i",
             str(clip)
+
         ])
 
 
         filters.append(
 
             f"[{i}:v]"
-            f"scale={VIDEO_WIDTH}:{VIDEO_HEIGHT}:"
+
+            f"scale="
+            f"{VIDEO_WIDTH}:"
+            f"{VIDEO_HEIGHT}:"
             f"force_original_aspect_ratio=increase,"
-            f"crop={VIDEO_WIDTH}:{VIDEO_HEIGHT},"
+
+            f"crop="
+            f"{VIDEO_WIDTH}:"
+            f"{VIDEO_HEIGHT},"
+
             f"fps={VIDEO_FPS},"
-            f"trim=duration={segment_duration:.3f},"
+
+            f"trim="
+            f"duration={segment_duration:.3f},"
+
             f"setpts=PTS-STARTPTS"
+
             f"[v{i}]"
+
         )
 
 
     joined = "".join(
 
         f"[v{i}]"
+
         for i in range(
             len(clips)
         )
@@ -781,12 +982,25 @@ def create_background_video(
     filters.append(
 
         f"{joined}"
-        f"concat=n={len(clips)}:v=1:a=0,"
-        f"trim=duration={duration:.3f},"
+
+        f"concat="
+        f"n={len(clips)}:"
+        f"v=1:"
+        f"a=0,"
+
+        f"trim="
+        f"duration={duration:.3f},"
+
         f"setpts=PTS-STARTPTS,"
-        f"eq=brightness=-0.08:saturation=1.05,"
+
+        f"eq="
+        f"brightness=-0.08:"
+        f"saturation=1.05,"
+
         f"vignette"
+
         f"[v]"
+
     )
 
 
@@ -832,35 +1046,55 @@ def create_background_video(
 
 
 # ============================================================
-# ORIGINAL LIGHT BACKGROUND MUSIC
+# LIGHT BACKGROUND MUSIC
 # ============================================================
 
 def create_music(
+
     output_file,
+
     duration
+
 ):
 
     fade_start = max(
+
         0,
+
         duration - 1
+
     )
 
 
+    # Very light original synthetic background
     audio_filter = (
 
-        "sine=frequency=196:"
+        "sine="
+        "frequency=196:"
         f"duration={duration}"
         "[a];"
 
-        "sine=frequency=246.94:"
+        "sine="
+        "frequency=246.94:"
         f"duration={duration}"
         "[b];"
 
         "[a][b]"
-        "amix=inputs=2,"
+
+        "amix="
+        "inputs=2,"
+
         "volume=0.22,"
-        "afade=t=in:st=0:d=1,"
-        f"afade=t=out:st={fade_start}:d=1"
+
+        "afade="
+        "t=in:"
+        "st=0:"
+        "d=1,"
+
+        "afade="
+        "t=out:"
+        f"st={fade_start}:"
+        "d=1"
 
     )
 
@@ -933,6 +1167,7 @@ def create_final_video(
 
         input_index = i + 3
 
+
         inputs.extend([
 
             "-loop",
@@ -954,11 +1189,17 @@ def create_final_video(
         filters.append(
 
             f"{current_video}"
+
             f"[{input_index}:v]"
+
             f"overlay=0:0:"
-            f"enable='between(t,"
+
+            f"enable='between("
+            f"t,"
             f"{overlay['start']:.3f},"
-            f"{overlay['end']:.3f})'"
+            f"{overlay['end']:.3f}"
+            f")'"
+
             f"{next_video}"
 
         )
@@ -967,28 +1208,40 @@ def create_final_video(
         current_video = next_video
 
 
+    # Voice
     filters.append(
+
         "[1:a]"
+
         "volume=1.0"
+
         "[voice]"
+
     )
 
 
+    # Music
     filters.append(
 
         "[2:a]"
+
         f"volume={MUSIC_VOLUME}"
+
         "[music]"
 
     )
 
 
+    # Mix
     filters.append(
 
         "[voice][music]"
-        "amix=inputs=2:"
+
+        "amix="
+        "inputs=2:"
         "duration=first:"
         "dropout_transition=0"
+
         "[audio]"
 
     )
@@ -1050,14 +1303,20 @@ def create_final_video(
 # ============================================================
 
 def create_metadata(
+
     index,
+
     item,
+
     duration
+
 ):
 
     title = (
+
         f"{item['topic']} | "
         f"Practical Online Earning Tip #Shorts"
+
     )
 
 
@@ -1117,22 +1376,27 @@ def create_metadata(
 # ============================================================
 
 def create_short(
+
     index,
+
     item
+
 ):
 
     print()
     print("=" * 70)
 
     print(
+
         f"CREATING ONLINE EARNING SHORT {index}"
+
     )
 
     print("=" * 70)
 
 
     # --------------------------------------------------------
-    # Voice script
+    # Complete voice script
     # --------------------------------------------------------
 
     voice_text = (
@@ -1155,8 +1419,11 @@ def create_short(
 
 
     generate_voice(
+
         voice_text,
+
         voice_file
+
     )
 
 
@@ -1165,31 +1432,45 @@ def create_short(
     )
 
 
+    # --------------------------------------------------------
+    # Keep video around 15 seconds.
+    #
+    # If voice is slightly longer than 15 seconds,
+    # use the actual voice duration so speech isn't cut.
+    # --------------------------------------------------------
+
     duration = min(
 
-        TARGET_SECONDS,
+        16.0,
 
         max(
+
             12.0,
+
             voice_duration + 0.25
+
         )
 
     )
 
 
     print(
+
         f"Voice duration: "
         f"{voice_duration:.2f}s"
+
     )
 
     print(
+
         f"Video duration: "
         f"{duration:.2f}s"
+
     )
 
 
     # --------------------------------------------------------
-    # Pexels clips
+    # Download two different background clips
     # --------------------------------------------------------
 
     clip1 = (
@@ -1208,19 +1489,25 @@ def create_short(
 
 
     download_pexels_clip(
+
         item["query"],
+
         clip1
+
     )
 
 
     download_pexels_clip(
+
         item["query"],
+
         clip2
+
     )
 
 
     # --------------------------------------------------------
-    # Background
+    # Create background
     # --------------------------------------------------------
 
     background = (
@@ -1246,7 +1533,7 @@ def create_short(
 
 
     # --------------------------------------------------------
-    # Music
+    # Create light music
     # --------------------------------------------------------
 
     music = (
@@ -1258,13 +1545,16 @@ def create_short(
 
 
     create_music(
+
         music,
+
         duration
+
     )
 
 
     # --------------------------------------------------------
-    # Text overlays
+    # Create text overlays
     # --------------------------------------------------------
 
     hook_image = (
@@ -1289,6 +1579,7 @@ def create_short(
     )
 
 
+    # Hook
     create_overlay(
 
         item["hook"],
@@ -1302,6 +1593,7 @@ def create_short(
     )
 
 
+    # Main tip
     create_overlay(
 
         "The practical step",
@@ -1315,6 +1607,7 @@ def create_short(
     )
 
 
+    # CTA
     create_overlay(
 
         "Build skills. Stay consistent.",
@@ -1329,46 +1622,64 @@ def create_short(
 
 
     # --------------------------------------------------------
-    # Timing
+    # Overlay timing
     # --------------------------------------------------------
 
     hook_end = min(
+
         2.5,
+
         duration * 0.22
+
     )
 
 
     body_end = min(
+
         10.8,
+
         duration * 0.78
+
     )
 
 
     overlays = [
 
         {
+
             "file": hook_image,
+
             "start": 0.0,
+
             "end": hook_end
+
         },
 
         {
+
             "file": body_image,
+
             "start": hook_end,
+
             "end": body_end
+
         },
 
         {
+
             "file": cta_image,
+
             "start": body_end,
+
             "end": duration
+
         }
 
     ]
 
 
     # --------------------------------------------------------
-    # Final video
+    # Final output
     # --------------------------------------------------------
 
     output_file = (
@@ -1411,8 +1722,11 @@ def create_short(
     )
 
 
+    print()
     print(
+
         f"SUCCESS: {output_file}"
+
     )
 
 
@@ -1430,11 +1744,19 @@ def main():
     )
 
     print(
-        "15 SECOND FACELESS YOUTUBE SHORTS"
+        "3 VIDEOS PER RUN"
+    )
+
+    print(
+        "FACELESS YOUTUBE SHORTS"
     )
 
     print("=" * 70)
 
+
+    # --------------------------------------------------------
+    # Check Pexels
+    # --------------------------------------------------------
 
     if not PEXELS_API_KEY:
 
@@ -1446,12 +1768,22 @@ def main():
         )
 
 
+    # --------------------------------------------------------
+    # Select exactly 3 DIFFERENT topics
+    # --------------------------------------------------------
+
     selected_topics = random.sample(
 
         TOPICS,
 
         SHORT_COUNT
 
+    )
+
+
+    print()
+    print(
+        "Selected topics:"
     )
 
 
@@ -1463,22 +1795,56 @@ def main():
 
     ):
 
-        create_short(
-            index,
-            item
+        print(
+
+            f"{index}. "
+            f"{item['topic']}"
+
         )
 
+
+    print()
+
+
+    # --------------------------------------------------------
+    # Generate exactly 3 videos
+    # --------------------------------------------------------
+
+    for index, item in enumerate(
+
+        selected_topics,
+
+        start=1
+
+    ):
+
+        create_short(
+
+            index,
+
+            item
+
+        )
+
+
+    # --------------------------------------------------------
+    # Finished
+    # --------------------------------------------------------
 
     print()
     print("=" * 70)
 
     print(
-        "ALL ONLINE EARNING SHORTS "
+        "ALL 3 ONLINE EARNING SHORTS "
         "CREATED SUCCESSFULLY"
     )
 
     print("=" * 70)
 
+
+# ============================================================
+# START
+# ============================================================
 
 if __name__ == "__main__":
 
