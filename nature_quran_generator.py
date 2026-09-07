@@ -826,6 +826,8 @@ def caption_image(completed_steps, current_step=None, current_words=None):
 
     return img
 
+return img
+
 
 def make_caption_frames(folder, sentence_data, total_duration, word_boundaries=None):
     """
