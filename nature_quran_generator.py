@@ -1,23 +1,19 @@
 #!/usr/bin/env python3
 """
-REFERENCE-STYLE ONLINE EARNING SHORTS GENERATOR
+ONLINE EARNING SHORTS GENERATOR V5.1
 
-Built from the user's existing professional generator, but redesigned around the
-uploaded reference video's editing language:
-- Portrait 1080x1920 Shorts.
-- Full-screen visual footage is the hero; no giant opaque cards covering it.
-- Very fast visual changes, with a fresh slide approximately every 1–2 seconds.
-- Large bold white captions show the exact words being spoken.
-- No extra labels, progress bars, pills, support text or unrelated frame text.
-- Matching visuals for the exact spoken idea (money, TikTok, laptop, AI, etc.).
-- Subtle punch-in / movement, dark vignette, and quick transitions.
-- Duration is natural: no forced filler. Usually 10–35 seconds depending on script.
-- Daily YouTube trend discovery remains enabled.
-- Three original videos per run.
-- Metadata follows the actual topic/content.
+Main improvements:
+- One continuous Edge-TTS narration per Short (no chopped voice between slides).
+- Exact narration is also the only on-screen text.
+- Text appears word-by-word while spoken, then stays on screen as numbered steps.
+- Every short sentence gets its own matching background visual.
+- Smooth 0.32s visual crossfades instead of hard cuts.
+- No extra title, pill, progress bar, labels, or unrelated frame text.
+- Fast pacing: scripts are written as short sentences, normally ~1–2.2s each.
+- 3 original Shorts per run.
+- YouTube trend discovery remains enabled.
 
-Keep filename as nature_quran_generator.py if the existing GitHub workflow uses it.
-Required GitHub secrets:
+GitHub secrets:
   PEXELS_API_KEY
   YOUTUBE_API_KEY
 """
@@ -33,26 +29,25 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import requests
-from PIL import Image, ImageDraw, ImageFont, ImageFilter
+from PIL import Image, ImageDraw, ImageFont
 
 try:
     import edge_tts
 except ImportError:
     edge_tts = None
 
-# ============================================================
-# SETTINGS
-# ============================================================
 W, H, FPS = 1080, 1920, 30
 SHORT_COUNT = 3
 MAX_SECONDS = 35
-MIN_BEAT_SECONDS = 0.85
-MAX_BEAT_SECONDS = 2.05
-TARGET_BEAT_SECONDS = 1.65
-
 VOICE = "en-US-EricNeural"
-VOICE_RATE = "+14%"
-VOICE_PITCH = "+3Hz"
+VOICE_RATE = "+10%"
+VOICE_PITCH = "+2Hz"
+
+# Smooth transition. This is deliberately short so the edit stays fast.
+TRANSITION = 0.32
+MIN_SENTENCE = 0.70
+MAX_SENTENCE = 2.00
+STEP_MAX_LINES = 2
 
 PEXELS_API_KEY = os.getenv("PEXELS_API_KEY", "").strip()
 YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY", "").strip()
@@ -61,193 +56,201 @@ TREND_WINDOW_DAYS = int(os.getenv("TREND_WINDOW_DAYS", "7"))
 
 ROOT = Path(__file__).resolve().parent
 OUTPUT_DIR = ROOT / "output"
-WORK_DIR = ROOT / "_work_reference_style"
+WORK_DIR = ROOT / "_work_reference_style_v4"
 FONTS_DIR = ROOT / "fonts"
+
 REGULAR_FONT = FONTS_DIR / "NotoSans-Regular.ttf"
 BOLD_FONT = FONTS_DIR / "NotoSans-Bold.ttf"
 SYSTEM_REGULAR = Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf")
 SYSTEM_BOLD = Path("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf")
 
-# Dark, high-contrast palette inspired by the reference.
-BLACK = (3, 5, 10, 255)
 WHITE = (255, 255, 255, 255)
-MUTED = (215, 220, 230, 255)
-ACCENT = (80, 170, 255, 255)
-GREEN = (67, 220, 135, 255)
-SHADOW = (0, 0, 0, 210)
-PANEL = (0, 0, 0, 145)
+MUTED = (205, 211, 220, 225)
+DIM = (150, 158, 170, 190)
+BLACK = (0, 0, 0, 230)
 
 TREND_QUERIES = [
-    "make money online", "online earning tips", "side hustle", "AI earning",
-    "affiliate marketing", "freelancing", "TikTok monetization",
-    "YouTube Shorts monetization", "digital products", "remote work",
+    "make money online", "online earning tips", "side hustle",
+    "AI earning", "affiliate marketing", "freelancing",
+    "TikTok monetization", "YouTube Shorts monetization",
+    "Facebook monetization", "digital products", "remote work",
     "online business", "ecommerce tips",
 ]
 
+# Each sentence is intentionally short.
+# "text" is EXACTLY what is sent to the voice generator.
+# "query" is the visual search for that exact sentence.
 TOPICS = {
-    "ai": {
-        "title": "AI freelancing", "key": "ai-freelancing",
-        "keywords": ["AI", "freelancing", "ChatGPT", "clients"],
-        "hook": "AI can help you earn — if you use it for a real skill.",
-        "beats": [
-            ("PICK ONE SKILL", "writing, research, design or admin", "freelancer laptop work"),
-            ("USE AI", "to speed up the boring parts", "AI chatbot laptop typing"),
-            ("CHECK IT", "never send unverified AI work", "person checking laptop work"),
-            ("SELL THE RESULT", "show a sample that solves a client problem", "freelancer client meeting laptop"),
+    "facebook": {
+        "title": "Facebook earning",
+        "key": "facebook-earning",
+        "keywords": ["Facebook", "content", "audience", "monetization"],
+        "sentences": [
+            ("Want to earn from Facebook? Start with useful content.", "facebook creator smartphone social media"),
+            ("Open Facebook and create or log in to your account.", "facebook website smartphone login"),
+            ("Choose one clear topic and create useful videos.", "facebook creator filming smartphone video"),
+            ("Post consistently and build a real audience.", "facebook creator audience analytics smartphone"),
+            ("Then check which monetization features you qualify for.", "facebook monetization creator smartphone analytics"),
         ],
-        "cta": "Save this for your next AI side hustle.",
-        "visual_hook": "young freelancer laptop technology work",
+        "cta": ("Follow for practical Facebook earning ideas.", "social media creator smartphone"),
+    },
+    "ai": {
+        "title": "AI freelancing",
+        "key": "ai-freelancing",
+        "keywords": ["AI", "freelancing", "clients", "skills"],
+        "sentences": [
+            ("AI can help you earn when you use it for a real skill.", "AI laptop freelancer technology"),
+            ("Choose one service you can deliver well.", "freelancer choosing skill laptop"),
+            ("Use AI to speed up the repetitive parts of that work.", "AI chatbot laptop typing"),
+            ("Check the result and create a sample for clients.", "freelancer checking laptop portfolio"),
+            ("Then offer that useful result to real clients.", "freelancer client meeting laptop"),
+        ],
+        "cta": ("Save this for your next AI side hustle.", "AI freelancer laptop"),
     },
     "affiliate": {
-        "title": "Affiliate marketing", "key": "affiliate-marketing",
+        "title": "Affiliate marketing",
+        "key": "affiliate-marketing",
         "keywords": ["affiliate", "product", "link", "commission"],
-        "hook": "You can earn from a product without owning the product.",
-        "beats": [
-            ("PICK A PRODUCT", "choose something people actually need", "online shopping product smartphone"),
-            ("GET A LINK", "use a legitimate affiliate program", "smartphone link social media"),
-            ("MAKE CONTENT", "show the product honestly", "person reviewing product phone"),
-            ("EARN COMMISSION", "when a qualifying purchase happens", "online sales commission money phone"),
+        "sentences": [
+            ("Affiliate marketing can pay a commission when someone buys through your link.", "affiliate product smartphone online shopping"),
+            ("Choose a product people genuinely need.", "product research smartphone online shopping"),
+            ("Join a legitimate affiliate program and get your link.", "affiliate dashboard laptop online business"),
+            ("Create useful content that explains the product.", "person reviewing product smartphone"),
+            ("Add your link and follow the program rules.", "smartphone affiliate link social media creator"),
         ],
-        "cta": "Follow for practical affiliate ideas.",
-        "visual_hook": "online shopping smartphone product review",
+        "cta": ("Follow for practical affiliate ideas.", "affiliate marketing smartphone"),
     },
     "tiktok": {
-        "title": "TikTok earning", "key": "tiktok-earning",
-        "keywords": ["TikTok", "content", "niche", "monetize"],
-        "hook": "Don't chase random views. Build one useful TikTok niche.",
-        "beats": [
-            ("CHOOSE A NICHE", "make your topic obvious fast", "TikTok creator smartphone vertical video"),
-            ("POST USEFUL CONTENT", "teach, compare, demonstrate or review", "social media creator filming phone"),
-            ("BUILD AN AUDIENCE", "give people a reason to return", "social media analytics smartphone"),
-            ("MONETIZE", "use eligible features, affiliates or services", "TikTok social media analytics phone"),
+        "title": "TikTok earning",
+        "key": "tiktok-earning",
+        "keywords": ["TikTok", "content", "niche", "monetization"],
+        "sentences": [
+            ("TikTok can create earning opportunities with useful content.", "TikTok creator smartphone vertical video"),
+            ("Choose one clear niche for your videos.", "social media niche smartphone creator"),
+            ("Make short videos that teach or demonstrate something.", "creator filming vertical smartphone video"),
+            ("Build an audience with consistent original content.", "social media audience analytics smartphone"),
+            ("Then use eligible monetization, affiliate, or service options.", "TikTok creator monetization smartphone"),
         ],
-        "cta": "Save this before your next TikTok.",
-        "visual_hook": "TikTok social media smartphone creator",
+        "cta": ("Save this before your next TikTok.", "TikTok creator smartphone"),
     },
     "youtube": {
-        "title": "YouTube Shorts", "key": "youtube-shorts",
-        "keywords": ["YouTube", "Shorts", "hook", "watch"],
-        "hook": "A good Short solves one problem fast.",
-        "beats": [
-            ("ONE PROBLEM", "give viewers one useful answer", "YouTube Shorts creator smartphone"),
-            ("HOOK FAST", "show the promise immediately", "video editing timeline smartphone"),
-            ("KEEP MOVING", "change visuals as the idea changes", "content creator editing laptop"),
-            ("STAY ORIGINAL", "add your own explanation and examples", "creator recording video laptop"),
+        "title": "YouTube Shorts",
+        "key": "youtube-shorts",
+        "keywords": ["YouTube", "Shorts", "hook", "retention"],
+        "sentences": [
+            ("A good Short solves one problem quickly.", "YouTube Shorts creator smartphone"),
+            ("Choose one clear problem to solve.", "content creator planning laptop"),
+            ("Show the useful part immediately.", "video editing vertical smartphone"),
+            ("Change the visual when the idea changes.", "creator editing vertical video laptop"),
+            ("Keep the explanation simple, useful, and original.", "YouTube creator recording smartphone"),
         ],
-        "cta": "Follow for more Shorts growth ideas.",
-        "visual_hook": "YouTube Shorts creator smartphone editing",
+        "cta": ("Follow for more Shorts growth ideas.", "YouTube Shorts creator smartphone"),
     },
     "freelance": {
-        "title": "Freelancing", "key": "freelancing",
+        "title": "Freelancing",
+        "key": "freelancing",
         "keywords": ["freelance", "skill", "client", "portfolio"],
-        "hook": "Your first freelance offer should be easy to understand.",
-        "beats": [
-            ("PICK ONE SKILL", "start with something you can deliver", "freelancer working laptop home office"),
-            ("MAKE ONE OFFER", "sell one clear result", "freelancer portfolio laptop"),
-            ("CREATE PROOF", "build useful samples before pitching", "freelancer client presentation"),
-            ("CONTACT CLIENTS", "show them the result you can provide", "freelancer business meeting laptop"),
+        "sentences": [
+            ("Start freelancing with one skill you can deliver well.", "freelancer laptop home office"),
+            ("Create one simple sample of your work.", "freelancer portfolio laptop"),
+            ("Make one clear offer around one useful result.", "freelancer business proposal laptop"),
+            ("Show your sample to potential clients.", "freelancer client meeting laptop"),
+            ("Improve your offer using real feedback.", "freelancer feedback laptop business"),
         ],
-        "cta": "Save this and build your first sample.",
-        "visual_hook": "freelancer laptop home office client",
+        "cta": ("Save this and build your first sample.", "freelancer laptop portfolio"),
     },
     "digital": {
-        "title": "Digital products", "key": "digital-products",
+        "title": "Digital products",
+        "key": "digital-products",
         "keywords": ["digital product", "template", "guide", "sale"],
-        "hook": "A digital product works best when it solves a repeated problem.",
-        "beats": [
-            ("FIND A PROBLEM", "look for something people repeatedly need", "person planning notes laptop"),
-            ("MAKE A RESOURCE", "try a template, checklist or guide", "digital template laptop design"),
-            ("TEST IT", "show it to real people first", "small business customer feedback laptop"),
-            ("IMPROVE IT", "use feedback before you scale", "digital product creator laptop"),
+        "sentences": [
+            ("A digital product should solve a real problem.", "digital product creator laptop"),
+            ("Find one problem people already want to solve.", "person planning laptop notes"),
+            ("Create a simple template, checklist, or guide.", "digital template laptop design"),
+            ("Show it to real people and improve it.", "customer feedback laptop digital product"),
+            ("Then sell the improved product through a suitable platform.", "digital product online store laptop"),
         ],
-        "cta": "Follow for realistic digital business ideas.",
-        "visual_hook": "digital product template laptop creator",
+        "cta": ("Follow for realistic digital business ideas.", "digital product laptop creator"),
     },
     "selling": {
-        "title": "Online selling", "key": "online-selling",
-        "keywords": ["online store", "sales", "cost", "profit"],
-        "hook": "Sales are not profit. Check the numbers first.",
-        "beats": [
-            ("TEST DEMAND", "start small before buying lots of stock", "ecommerce online store smartphone"),
-            ("COUNT EVERY COST", "product, fees, delivery and returns", "calculator ecommerce business money"),
-            ("CHECK YOUR MARGIN", "know what is left after costs", "business profit calculator money"),
-            ("TRACK REAL PROFIT", "revenue alone is not enough", "online seller package calculator"),
+        "title": "Online selling",
+        "key": "online-selling",
+        "keywords": ["ecommerce", "sales", "cost", "profit"],
+        "sentences": [
+            ("Sales are not profit, so check your numbers first.", "ecommerce calculator money business"),
+            ("Test demand before buying lots of stock.", "online shopping ecommerce packages"),
+            ("Count product, delivery, platform, and return costs.", "calculator ecommerce business money"),
+            ("Check the margin left after every cost.", "business profit calculator money"),
+            ("Track real profit instead of only revenue.", "online seller calculator laptop"),
         ],
-        "cta": "Save this before you buy your first stock.",
-        "visual_hook": "ecommerce shopping packages money calculator",
+        "cta": ("Save this before you buy your first stock.", "ecommerce packages business"),
     },
     "remote": {
-        "title": "Remote work", "key": "remote-work",
-        "keywords": ["remote job", "CV", "skills", "safe"],
-        "hook": "A real remote job should not start with a mystery payment.",
-        "beats": [
-            ("BUILD A SKILL", "focus on something employers need", "remote worker laptop home office"),
-            ("SHOW RESULTS", "use a clear CV and portfolio", "resume CV laptop job application"),
-            ("APPLY SAFELY", "use legitimate companies and platforms", "online job search laptop safety"),
-            ("NEVER PAY FIRST", "a promised job should not require a stranger's fee", "online job scam warning laptop"),
+        "title": "Remote work",
+        "key": "remote-work",
+        "keywords": ["remote job", "CV", "skills", "safety"],
+        "sentences": [
+            ("Start with a skill employers actually need.", "person learning laptop online course"),
+            ("Prepare a clear CV and useful portfolio.", "resume CV laptop job application"),
+            ("Apply through legitimate companies or platforms.", "online job search laptop"),
+            ("Never pay a stranger to unlock a promised job.", "online job scam warning laptop"),
+            ("Keep applying and improve your applications.", "remote worker laptop job search"),
         ],
-        "cta": "Share this with someone looking for remote work.",
-        "visual_hook": "remote worker laptop home office job search",
+        "cta": ("Share this with someone looking for remote work.", "remote worker laptop"),
     },
     "pod": {
-        "title": "Print on demand", "key": "print-on-demand",
-        "keywords": ["print on demand", "design", "shirt", "niche"],
-        "hook": "You can test designs without storing a warehouse of stock.",
-        "beats": [
-            ("CHOOSE A NICHE", "design for a specific audience", "designer t shirt ecommerce laptop"),
-            ("CREATE ORIGINAL WORK", "avoid copyrighted characters and logos", "graphic designer creating t shirt"),
-            ("LIST THE DESIGN", "show it clearly to your audience", "online store t shirt product page"),
-            ("TEST DEMAND", "improve what people respond to", "online store t shirt order package"),
+        "title": "Print on demand",
+        "key": "print-on-demand",
+        "keywords": ["print on demand", "design", "niche", "ecommerce"],
+        "sentences": [
+            ("Print on demand lets you test designs without storing lots of stock.", "print on demand t shirt ecommerce"),
+            ("Choose a specific audience or niche.", "designer t shirt niche laptop"),
+            ("Create original designs for that audience.", "graphic designer creating t shirt"),
+            ("List the design clearly on a selling platform.", "online store t shirt product page"),
+            ("Test demand and improve the designs people respond to.", "online store t shirt order"),
         ],
-        "cta": "Follow for practical ecommerce ideas.",
-        "visual_hook": "print on demand t shirt ecommerce design",
+        "cta": ("Follow for practical ecommerce ideas.", "print on demand ecommerce"),
     },
     "general": {
-        "title": "Online earning", "key": "online-earning",
-        "keywords": ["money", "skill", "problem", "results"],
-        "hook": "Ignore easy-money hype. Start with a real problem.",
-        "beats": [
-            ("CHOOSE ONE SKILL", "pick something you can improve", "person learning laptop online course"),
-            ("SOLVE ONE PROBLEM", "make the offer specific and useful", "small business problem solving laptop"),
-            ("TEST THE MARKET", "learn from real people", "small business customer feedback"),
-            ("IMPROVE", "use real results instead of hype", "young entrepreneur laptop business"),
+        "title": "Online earning",
+        "key": "online-earning",
+        "keywords": ["skill", "problem", "market", "results"],
+        "sentences": [
+            ("Ignore easy money hype and start with a real problem.", "online business money laptop"),
+            ("Choose one skill you can improve.", "person learning laptop online course"),
+            ("Solve one specific problem for someone.", "small business problem solving laptop"),
+            ("Test your idea with real people.", "customer feedback small business laptop"),
+            ("Improve the offer using real results, not hype.", "young entrepreneur laptop business"),
         ],
-        "cta": "Save this if you want realistic earning ideas.",
-        "visual_hook": "money laptop online business young entrepreneur",
+        "cta": ("Save this for your next online earning idea.", "online business laptop money"),
     },
 }
 
-# ============================================================
-# UTILITIES
-# ============================================================
 def run(cmd, check=True, capture=False):
     print("$", " ".join(str(x) for x in cmd))
     return subprocess.run(
-        [str(x) for x in cmd], check=check, text=True,
+        [str(x) for x in cmd],
+        check=check,
+        text=True,
         stdout=subprocess.PIPE if capture else None,
         stderr=subprocess.STDOUT if capture else None,
     )
 
-
 def require_program(name):
     if shutil.which(name) is None:
         raise RuntimeError(f"Required program not found: {name}")
-
 
 def font_path(bold=False):
     p = BOLD_FONT if bold else REGULAR_FONT
     fallback = SYSTEM_BOLD if bold else SYSTEM_REGULAR
     return str(p if p.exists() else fallback)
 
-
 def F(size, bold=False):
     return ImageFont.truetype(font_path(bold), size)
-
 
 def text_width(draw, text, font, stroke=0):
     b = draw.textbbox((0, 0), text, font=font, stroke_width=stroke)
     return b[2] - b[0]
-
 
 def wrap(draw, text, font, max_width, stroke=0):
     words = text.split()
@@ -264,13 +267,12 @@ def wrap(draw, text, font, max_width, stroke=0):
         lines.append(line)
     return lines
 
-
 def safe_slug(s):
     return re.sub(r"[^a-z0-9]+", "-", s.lower()).strip("-")
 
-# ============================================================
+# ------------------------------------------------------------
 # YOUTUBE TREND DISCOVERY
-# ============================================================
+# ------------------------------------------------------------
 def youtube_get(path, params):
     url = f"https://www.googleapis.com/youtube/v3/{path}"
     p = dict(params)
@@ -279,24 +281,25 @@ def youtube_get(path, params):
     r.raise_for_status()
     return r.json()
 
-
 def topic_from_title(title):
     t = title.lower()
     mapping = [
+        ("facebook", "facebook"), ("meta", "facebook"),
         ("chatgpt", "ai"), ("ai", "ai"), ("automation", "ai"),
         ("affiliate", "affiliate"), ("amazon associates", "affiliate"),
-        ("tiktok", "tiktok"), ("youtube", "youtube"), ("shorts", "youtube"),
+        ("tiktok", "tiktok"),
+        ("youtube", "youtube"), ("shorts", "youtube"),
         ("freelanc", "freelance"), ("fiverr", "freelance"), ("upwork", "freelance"),
         ("digital product", "digital"), ("template", "digital"),
         ("ecommerce", "selling"), ("shopify", "selling"), ("dropship", "selling"),
-        ("remote job", "remote"), ("remote work", "remote"), ("work from home", "remote"),
+        ("remote job", "remote"), ("remote work", "remote"),
+        ("work from home", "remote"),
         ("print on demand", "pod"), ("merch", "pod"),
     ]
     for word, key in mapping:
         if word in t:
             return key
     return "general"
-
 
 def discover_topics():
     if not YOUTUBE_API_KEY:
@@ -313,13 +316,16 @@ def discover_topics():
             data = youtube_get("search", {
                 "part": "snippet", "q": q, "type": "video",
                 "order": random.choice(["viewCount", "date"]),
-                "publishedAfter": published_after, "maxResults": 12,
-                "regionCode": YOUTUBE_REGION, "relevanceLanguage": "en",
+                "publishedAfter": published_after,
+                "maxResults": 12,
+                "regionCode": YOUTUBE_REGION,
+                "relevanceLanguage": "en",
                 "safeSearch": "moderate",
             })
         except Exception as exc:
             print("YouTube search failed:", exc)
             continue
+
         for item in data.get("items", []):
             vid = item.get("id", {}).get("videoId")
             if not vid:
@@ -335,27 +341,34 @@ def discover_topics():
 
     ids = list(candidates)[:50]
     try:
-        stats = youtube_get("videos", {"part": "statistics,snippet", "id": ",".join(ids)})
+        stats = youtube_get(
+            "videos",
+            {"part": "statistics,snippet", "id": ",".join(ids)}
+        )
     except Exception as exc:
         print("YouTube statistics failed:", exc)
         return [dict(TOPICS[k]) for k in random.sample(list(TOPICS), SHORT_COUNT)]
 
     now = datetime.now(timezone.utc)
     scored = []
+
     for item in stats.get("items", []):
         vid = item.get("id")
         base = candidates.get(vid, {})
         title = base.get("title", "")
+
         try:
             views = int(item.get("statistics", {}).get("viewCount", 0) or 0)
         except Exception:
             views = 0
+
         pub = item.get("snippet", {}).get("publishedAt") or base.get("published")
         try:
             dt = datetime.fromisoformat(pub.replace("Z", "+00:00"))
             age_h = max(1.0, (now - dt).total_seconds() / 3600)
         except Exception:
             age_h = max(24.0, TREND_WINDOW_DAYS * 24.0)
+
         likes = int(item.get("statistics", {}).get("likeCount", 0) or 0)
         comments = int(item.get("statistics", {}).get("commentCount", 0) or 0)
         velocity = views / age_h
@@ -364,41 +377,50 @@ def discover_topics():
 
     scored.sort(reverse=True, key=lambda x: x[0])
     selected, used = [], set()
+
     for score, title, views, age_h, vid in scored:
         key = topic_from_title(title)
         if key in used:
             continue
+
         topic = dict(TOPICS[key])
         topic.update({
-            "trend_source_title": title, "trend_views": views,
-            "trend_age_hours": round(age_h, 1), "trend_score": round(score, 2),
+            "trend_source_title": title,
+            "trend_views": views,
+            "trend_age_hours": round(age_h, 1),
+            "trend_score": round(score, 2),
             "trend_video_id": vid,
         })
         selected.append(topic)
         used.add(key)
         print(f"TREND: {key} | {views:,} views | {age_h:.1f}h | {title[:90]}")
+
         if len(selected) >= SHORT_COUNT:
             break
 
     if len(selected) < SHORT_COUNT:
-        remaining = [dict(TOPICS[k]) for k in TOPICS if k not in used]
+        remaining = [
+            dict(TOPICS[k]) for k in TOPICS if k not in used
+        ]
         random.shuffle(remaining)
         selected.extend(remaining[:SHORT_COUNT - len(selected)])
+
     return selected[:SHORT_COUNT]
 
-# ============================================================
+# ------------------------------------------------------------
 # PEXELS
-# ============================================================
+# ------------------------------------------------------------
 def pexels_json(endpoint, params):
     if not PEXELS_API_KEY:
         return {}
     r = requests.get(
         f"https://api.pexels.com/v1/{endpoint}",
-        headers={"Authorization": PEXELS_API_KEY}, params=params, timeout=30,
+        headers={"Authorization": PEXELS_API_KEY},
+        params=params,
+        timeout=30,
     )
     r.raise_for_status()
     return r.json()
-
 
 def download_url(url, path):
     try:
@@ -413,39 +435,52 @@ def download_url(url, path):
         print("download failed:", exc)
         return None
 
-
 def pexels_video(query, path):
     try:
         data = pexels_json("videos/search", {
-            "query": query, "orientation": "portrait", "size": "medium", "per_page": 10,
+            "query": query,
+            "orientation": "portrait",
+            "size": "medium",
+            "per_page": 12,
         })
     except Exception as exc:
         print("Pexels video search failed:", exc)
         return None
+
     videos = data.get("videos", [])
     random.shuffle(videos)
+
     for v in videos:
         files = [x for x in v.get("video_files", []) if x.get("link")]
-        portrait = [x for x in files if (x.get("height") or 0) >= (x.get("width") or 0)]
+        portrait = [
+            x for x in files
+            if (x.get("height") or 0) >= (x.get("width") or 0)
+        ]
         candidates = portrait or files
-        candidates.sort(key=lambda x: abs((x.get("height") or 1080) - 1920))
+        candidates.sort(
+            key=lambda x: abs((x.get("height") or 1080) - 1920)
+        )
         for vf in candidates[:3]:
             got = download_url(vf["link"], path)
             if got:
                 return got
     return None
 
-
 def pexels_photo(query, path):
     try:
         data = pexels_json("search", {
-            "query": query, "orientation": "portrait", "size": "large", "per_page": 10,
+            "query": query,
+            "orientation": "portrait",
+            "size": "large",
+            "per_page": 12,
         })
     except Exception as exc:
         print("Pexels photo search failed:", exc)
         return None
+
     photos = data.get("photos", [])
     random.shuffle(photos)
+
     for p in photos:
         src = p.get("src", {})
         link = src.get("large2x") or src.get("large") or src.get("original")
@@ -455,326 +490,754 @@ def pexels_photo(query, path):
                 return got
     return None
 
-
 def get_visual(query, folder, index):
-    # Alternate video/photo to keep the edit feeling alive.
-    if index % 2:
-        return pexels_video(query, folder / f"visual_{index}.mp4")
-    return pexels_photo(query, folder / f"visual_{index}.jpg")
+    # Prefer video for a more natural, less slideshow-like result.
+    if random.random() < 0.72:
+        got = pexels_video(query, folder / f"visual_{index}.mp4")
+        if got:
+            return got
+        return pexels_photo(query, folder / f"visual_{index}.jpg")
 
-# ============================================================
-# VOICE
-# ============================================================
-async def tts_async(text, out):
+    got = pexels_photo(query, folder / f"visual_{index}.jpg")
+    if got:
+        return got
+    return pexels_video(query, folder / f"visual_{index}.mp4")
+
+# ------------------------------------------------------------
+# CONTINUOUS VOICE + WORD TIMINGS
+# ------------------------------------------------------------
+async def tts_with_boundaries(text, out):
     if edge_tts is None:
         raise RuntimeError("edge-tts is not installed.")
-    communicate = edge_tts.Communicate(text, VOICE, rate=VOICE_RATE, pitch=VOICE_PITCH)
-    await communicate.save(str(out))
 
+    communicate = edge_tts.Communicate(
+        text,
+        VOICE,
+        rate=VOICE_RATE,
+        pitch=VOICE_PITCH,
+    )
+
+    boundaries = []
+
+    with open(out, "wb") as f:
+        async for chunk in communicate.stream():
+            kind = chunk.get("type")
+            if kind == "audio":
+                f.write(chunk["data"])
+            elif kind == "WordBoundary":
+                boundaries.append({
+                    "text": chunk.get("text", ""),
+                    "offset": float(chunk.get("offset", 0)) / 10_000_000,
+                    "duration": float(chunk.get("duration", 0)) / 10_000_000,
+                })
+
+    return boundaries
 
 def make_voice(text, out):
-    asyncio.run(tts_async(text, out))
-
+    return asyncio.run(tts_with_boundaries(text, out))
 
 def media_duration(path):
     r = run([
-        "ffprobe", "-v", "error", "-show_entries", "format=duration",
-        "-of", "default=noprint_wrappers=1:nokey=1", path,
+        "ffprobe", "-v", "error",
+        "-show_entries", "format=duration",
+        "-of", "default=noprint_wrappers=1:nokey=1",
+        path,
     ], capture=True)
     return float(r.stdout.strip())
 
-# ============================================================
-# CLEAN REFERENCE-STYLE GRAPHICS
-# ============================================================
-def caption_overlay(text):
-    """Minimal caption-only overlay. No extra labels, title cards, progress bars or clutter."""
+def words_only(text):
+    return re.findall(r"[A-Za-z0-9']+", text)
+
+def align_sentences(sentences, boundaries, total_duration):
+    """
+    Map each sentence to the actual TTS word timings.
+    Falls back safely to proportional timing if a TTS engine response
+    has an unusual boundary sequence.
+    """
+    b = [x for x in boundaries if x.get("text")]
+    result = []
+    pos = 0
+
+    for sentence, query in sentences:
+        target = words_only(sentence)
+        count = len(target)
+
+        if pos + count <= len(b):
+            start = b[pos]["offset"]
+            end_item = b[pos + count - 1]
+            end = end_item["offset"] + max(0.05, end_item["duration"])
+            pos += count
+        else:
+            start = result[-1]["end"] if result else 0.0
+            end = start + max(MIN_SENTENCE, total_duration / max(1, len(sentences)))
+
+        if end <= start:
+            end = start + MIN_SENTENCE
+
+        result.append({
+            "text": sentence,
+            "query": query,
+            "start": max(0.0, start),
+            "end": min(total_duration, end),
+        })
+
+    # Normalize gaps and enforce short scene pacing.
+    for i in range(len(result)):
+        if i > 0:
+            result[i]["start"] = max(
+                result[i]["start"],
+                result[i - 1]["start"] + 0.05
+            )
+        result[i]["end"] = max(
+            result[i]["end"],
+            result[i]["start"] + MIN_SENTENCE
+        )
+
+    # Last sentence must reach the actual end of the narration.
+    if result:
+        result[-1]["end"] = total_duration
+
+    return result
+
+# ------------------------------------------------------------
+# CAPTION DESIGN
+# ------------------------------------------------------------
+def _draw_rounded_card(base, box, fill, outline=None, radius=28, width=2):
+    d = ImageDraw.Draw(base)
+    d.rounded_rectangle(box, radius=radius, fill=fill, outline=outline, width=width)
+
+
+def _step_font_size(step_count):
+    # Keep the complete stack readable while preserving a large mobile-first type.
+    if step_count <= 3:
+        return 57
+    if step_count <= 4:
+        return 51
+    if step_count <= 5:
+        return 45
+    return 40
+
+
+def caption_image(completed_steps, current_step=None, current_words=None):
+    """
+    V5 reference-style step board.
+
+    Behaviour:
+      * No unrelated title/pill/progress text.
+      * Every spoken sentence becomes ONE numbered step.
+      * The current step grows word-by-word while the voice speaks.
+      * Previous steps stay visible instead of disappearing.
+      * The current step is visually stronger; completed steps remain readable.
+      * The layout is intentionally clean and similar in structure to the
+        supplied numbered-step reference image, but uses original styling.
+    """
     img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    d = ImageDraw.Draw(img)
 
-    # Very soft bottom readability gradient. The footage remains the hero.
-    panel = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    # Very subtle bottom readability gradient. It does not hide the footage.
+    panel = Image.new("RGBA", (W, 980), (0, 0, 0, 0))
     pd = ImageDraw.Draw(panel)
-    for i in range(430):
-        alpha = int(115 * (i / 430) ** 2.0)
-        y = H - 430 + i
+    for y in range(980):
+        alpha = int(120 * (y / 980) ** 2)
         pd.line((0, y, W, y), fill=(0, 0, 0, alpha))
-    img.alpha_composite(panel)
+    img.alpha_composite(panel, (0, H - 980))
+
     d = ImageDraw.Draw(img)
 
-    # The on-screen text is the exact words spoken in this scene.
-    # Keep it to 1–2 lines and visually centered near the lower third.
-    text = re.sub(r"\s+", " ", text).strip()
-    font = F(78 if len(text) <= 24 else 66 if len(text) <= 42 else 54, True)
-    lines = wrap(d, text.upper(), font, 930, stroke=4)
-    lines = lines[:2]
+    steps = list(completed_steps)
+    if current_step is not None and current_words:
+        steps.append(" ".join(current_words))
 
-    total_h = len(lines) * (font.size + 10)
-    y = H - 250 - total_h / 2
-    for line in lines:
-        tw = text_width(d, line, font, stroke=5)
-        x = (W - tw) / 2
-        # Strong shadow/stroke for readability without an opaque text box.
-        d.text((x + 4, y + 6), line, font=font, fill=(0, 0, 0, 235),
-               stroke_width=10, stroke_fill=(0, 0, 0, 220))
-        d.text((x, y), line, font=font, fill=WHITE,
-               stroke_width=5, stroke_fill=(0, 0, 0, 255))
-        y += font.size + 10
+    if not steps:
+        return img
+
+    # Put the step board in the lower/middle portion so the background remains visible.
+    font_size = _step_font_size(len(steps))
+    font = F(font_size, True)
+    small_font = F(max(31, font_size - 12), True)
+
+    circle_x = 112
+    text_x = 175
+    card_left = 62
+    card_right = W - 62
+
+    rendered = []
+    for i, text in enumerate(steps):
+        lines = wrap(d, text.upper(), font, 790, stroke=2)
+        lines = lines[:STEP_MAX_LINES]
+        rendered.append((i, lines))
+
+    line_h = font.size + 6
+    card_gap = 12
+    card_heights = [
+        max(88, len(lines) * line_h + 34)
+        for _, lines in rendered
+    ]
+    total_h = sum(card_heights) + card_gap * (len(card_heights) - 1)
+
+    # Keep the board centered vertically, but biased slightly lower.
+    top = max(560, min(900, int(H - 300 - total_h)))
+
+    y = top
+    for idx, lines in rendered:
+        is_current = current_step is not None and idx == len(rendered) - 1
+
+        # Transparent card; no large opaque panel.
+        if is_current:
+            fill = (8, 15, 25, 188)
+            outline = (255, 255, 255, 210)
+        else:
+            fill = (5, 10, 18, 135)
+            outline = (255, 255, 255, 95)
+
+        h = card_heights[idx]
+        _draw_rounded_card(
+            img,
+            (card_left, y, card_right, y + h),
+            fill,
+            outline,
+            radius=30,
+            width=2,
+        )
+
+        # Number circle.
+        cy = y + h / 2
+        r = 27
+        d.ellipse(
+            (circle_x-r, cy-r, circle_x+r, cy+r),
+            fill=(255, 255, 255, 235) if is_current else (255, 255, 255, 175),
+        )
+
+        number = str(idx + 1)
+        nb = d.textbbox((0, 0), number, font=small_font)
+        nw, nh = nb[2] - nb[0], nb[3] - nb[1]
+        d.text(
+            (circle_x - nw/2, cy - nh/2 - 3),
+            number,
+            font=small_font,
+            fill=(0, 0, 0, 255),
+        )
+
+        # Sentence text.
+        text_y = y + (h - len(lines) * line_h) / 2 - 2
+        for line in lines:
+            tw = text_width(d, line, font, 2)
+            # Never let a long line run into the number circle.
+            x = min(text_x, card_right - 35 - tw)
+
+            d.text(
+                (x + 3, text_y + 4),
+                line,
+                font=font,
+                fill=(0, 0, 0, 225),
+                stroke_width=5,
+                stroke_fill=(0, 0, 0, 210),
+            )
+            d.text(
+                (x, text_y),
+                line,
+                font=font,
+                fill=(255, 255, 255, 255) if is_current else (224, 229, 236, 235),
+                stroke_width=2,
+                stroke_fill=(0, 0, 0, 255),
+            )
+            text_y += line_h
+
+        y += h + card_gap
 
     return img
 
 
-def render_overlay(text):
-    return caption_overlay(text)
+def make_caption_frames(folder, sentence_data, total_duration, word_boundaries=None):
+    """
+    Create cumulative step-board PNGs.
 
-# ============================================================
-# VIDEO PREPARATION
-# ============================================================
-def prepare_visual_clip(path, out, duration, variant=0):
-    if path is None or not Path(path).exists():
-        return None
-    ext = Path(path).suffix.lower()
-    # Slightly different zoom/crop each beat avoids a repetitive template feel.
-    zoom = 1.04 + (variant % 3) * 0.02
-    if ext in {".jpg", ".jpeg", ".png", ".webp"}:
-        frames = (
-            f"scale=1320:2346:force_original_aspect_ratio=increase,crop=1080:1920,"
-            f"zoompan=z='min({zoom}+on*0.00045,{zoom+0.045})':d={max(1,int(duration*FPS))}:s=1080x1920:fps={FPS},"
-            "eq=brightness=-0.03:saturation=1.02,format=yuv420p"
+    The actual narration is one continuous audio track.
+    Caption changes are timed to the TTS word boundaries when available.
+    Spoken words are added progressively and never removed.
+    """
+    events = []
+
+    # Build a boundary list once. We use it only to synchronize visible words.
+    boundaries = [x for x in (word_boundaries or []) if x.get("text")]
+
+    boundary_pos = 0
+
+    for idx, s in enumerate(sentence_data):
+        ws = words_only(s["text"])
+        start = s["start"]
+        end = s["end"]
+        dur = max(0.15, end - start)
+
+        # Prefer real TTS word timings.
+        sentence_boundaries = boundaries[boundary_pos:boundary_pos + len(ws)]
+
+        if len(sentence_boundaries) == len(ws):
+            for j, b in enumerate(sentence_boundaries, 1):
+                t = max(start, float(b["offset"]))
+                events.append((t, idx, ws[:j]))
+            boundary_pos += len(ws)
+        else:
+            # Reliable fallback: evenly reveal words across the spoken sentence.
+            for j in range(1, len(ws) + 1):
+                t = start + dur * ((j - 1) / max(1, len(ws)))
+                events.append((t, idx, ws[:j]))
+
+    # Sort and remove impossible duplicate/negative timestamps.
+    events.sort(key=lambda x: x[0])
+    paths = []
+
+    for i, (t, idx, current_words) in enumerate(events):
+        # Previous sentences remain permanently visible.
+        prior = [s["text"] for s in sentence_data[:idx]]
+
+        img = caption_image(
+            prior,
+            current_step=sentence_data[idx]["text"],
+            current_words=current_words,
         )
-        run(["ffmpeg","-y","-loop","1","-i",path,"-t",f"{duration:.3f}","-vf",frames,
-             "-an","-c:v","libx264","-preset","veryfast","-crf","24",out])
+
+        p = folder / f"caption_{i:04d}.png"
+        img.save(p, "PNG")
+        paths.append((max(0.0, min(total_duration, t)), p))
+
+    if not paths:
+        final_img = caption_image(
+            [s["text"] for s in sentence_data],
+            current_step=None,
+            current_words=None,
+        )
+        final_path = folder / "caption_final.png"
+        final_img.save(final_path, "PNG")
+        return [(0.0, final_path)], final_path
+
+    final_img = caption_image(
+        [s["text"] for s in sentence_data],
+        current_step=None,
+        current_words=None,
+    )
+    final_path = folder / "caption_final.png"
+    final_img.save(final_path, "PNG")
+
+    return paths, final_path
+
+
+def build_caption_video(folder, sentence_data, total_duration, word_boundaries=None):
+    """
+    Build a transparent caption video.
+
+    Each word reveal is a new frame, while previous spoken steps stay on screen.
+    """
+    paths, final_path = make_caption_frames(
+        folder,
+        sentence_data,
+        total_duration,
+        word_boundaries=word_boundaries,
+    )
+
+    timeline = folder / "caption_timeline.txt"
+
+    # Collapse timestamps that are effectively identical.
+    cleaned = []
+    for t, p in paths:
+        if cleaned and abs(t - cleaned[-1][0]) < 0.025:
+            cleaned[-1] = (t, p)
+        else:
+            cleaned.append((t, p))
+
+    with open(timeline, "w", encoding="utf-8") as f:
+        for i, (t, p) in enumerate(cleaned):
+            next_t = cleaned[i + 1][0] if i + 1 < len(cleaned) else total_duration
+            dur = max(0.035, next_t - t)
+            f.write(f"file '{Path(p).resolve()}'\n")
+            f.write(f"duration {dur:.4f}\n")
+
+        # concat demuxer needs the last file repeated.
+        f.write(f"file '{Path(cleaned[-1][1]).resolve()}'\n")
+
+    caption_video = folder / "captions.mov"
+    run([
+        "ffmpeg", "-y",
+        "-f", "concat", "-safe", "0", "-i", timeline,
+        "-t", f"{total_duration:.3f}",
+        "-vf", f"scale={W}:{H}:flags=lanczos,format=rgba",
+        "-c:v", "qtrle",
+        "-pix_fmt", "argb",
+        caption_video
+    ])
+    return caption_video
+
+
+# ------------------------------------------------------------
+# VISUAL CLIPS
+# ------------------------------------------------------------
+def prepare_visual(path, out, duration, variant):
+    if not path or not Path(path).exists():
+        return None
+
+    ext = Path(path).suffix.lower()
+    zoom = 1.04 + (variant % 4) * 0.012
+
+    if ext in {".jpg", ".jpeg", ".png", ".webp"}:
+        vf = (
+            "scale=1320:2346:force_original_aspect_ratio=increase,"
+            "crop=1080:1920,"
+            f"zoompan=z='min({zoom}+on*0.00035,{zoom+0.035})':"
+            f"d={max(1,int(duration*FPS))}:s=1080x1920:fps={FPS},"
+            "eq=brightness=-0.015:saturation=1.03,format=yuv420p"
+        )
+        run([
+            "ffmpeg", "-y", "-loop", "1", "-i", path,
+            "-t", f"{duration:.3f}", "-vf", vf,
+            "-an", "-c:v", "libx264", "-preset", "veryfast",
+            "-crf", "23", out
+        ])
     else:
         vf = (
-            "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,"
-            "eq=brightness=-0.025:saturation=1.02,format=yuv420p"
+            "scale=1080:1920:force_original_aspect_ratio=increase,"
+            "crop=1080:1920,"
+            "eq=brightness=-0.015:saturation=1.03,format=yuv420p"
         )
-        run(["ffmpeg","-y","-stream_loop","-1","-i",path,"-t",f"{duration:.3f}","-vf",vf,
-             "-an","-c:v","libx264","-preset","veryfast","-crf","24",out])
+        run([
+            "ffmpeg", "-y", "-stream_loop", "-1", "-i", path,
+            "-t", f"{duration:.3f}", "-vf", vf,
+            "-an", "-c:v", "libx264", "-preset", "veryfast",
+            "-crf", "23", out
+        ])
+
     return out
 
+def build_visual_timeline(sentence_data, folder, total_duration):
+    """
+    Make one visual per sentence and crossfade them.
+    No black fade-in/fade-out between slides.
+    """
+    clips = []
 
-def make_scene_video(card, visual, voice, duration, out, beat_index=0):
-    # Quick fade in/out on the transparent overlay + visual; the footage stays dominant.
-    card_png = str(card)
-    fade_out = max(0.12, duration - 0.12)
-    if visual and Path(visual).exists():
-        fc = (
-            "[0:v]format=yuv420p,"
-            f"fade=t=in:st=0:d=0.06,fade=t=out:st={fade_out:.3f}:d=0.08[v0];"
-            "[1:v]format=rgba,"
-            "fade=t=in:st=0:d=0.05:alpha=1,"
-            f"fade=t=out:st={fade_out:.3f}:d=0.08:alpha=1[ov];"
-            "[v0][ov]overlay=0:0:format=auto,format=yuv420p[v]"
+    for i, s in enumerate(sentence_data):
+        # Keep every sentence visually represented.
+        dur = max(0.35, s["end"] - s["start"])
+        if i < len(sentence_data) - 1:
+            dur += TRANSITION
+
+        media = get_visual(
+            f"{s['query']} realistic natural footage",
+            folder,
+            i + 1,
         )
-        run(["ffmpeg","-y","-i",visual,"-loop","1","-i",card_png,"-i",voice,
-             "-t",f"{duration:.3f}","-filter_complex",fc,
-             "-map","[v]","-map","2:a","-c:v","libx264","-preset","veryfast",
-             "-crf","23","-c:a","aac","-b:a","128k","-shortest",out])
+
+        prepared = prepare_visual(
+            media,
+            folder / f"prepared_{i+1}.mp4",
+            dur,
+            i + 1,
+        )
+
+        if prepared:
+            clips.append(prepared)
+
+    if not clips:
+        # Emergency fallback.
+        blank = folder / "blank.mp4"
+        run([
+            "ffmpeg", "-y", "-f", "lavfi",
+            "-i", f"color=c=black:s={W}x{H}:r={FPS}",
+            "-t", f"{total_duration:.3f}",
+            "-c:v", "libx264", "-pix_fmt", "yuv420p", blank
+        ])
+        return blank
+
+    if len(clips) == 1:
+        return clips[0]
+
+    current = clips[0]
+    current_duration = media_duration(current)
+
+    for i, nxt in enumerate(clips[1:], start=1):
+        next_duration = media_duration(nxt)
+        out = folder / f"xfade_{i}.mp4"
+
+        offset = max(0.0, current_duration - TRANSITION)
+
+        filter_complex = (
+            f"[0:v][1:v]xfade=transition=smoothleft:"
+            f"duration={TRANSITION}:offset={offset:.3f},"
+            "format=yuv420p[v]"
+        )
+
+        run([
+            "ffmpeg", "-y",
+            "-i", current,
+            "-i", nxt,
+            "-filter_complex", filter_complex,
+            "-map", "[v]",
+            "-an",
+            "-c:v", "libx264",
+            "-preset", "veryfast",
+            "-crf", "23",
+            "-movflags", "+faststart",
+            out
+        ])
+
+        current = out
+        current_duration = current_duration + next_duration - TRANSITION
+
+    # Trim/pad visual timeline to exact narration duration.
+    final_visual = folder / "visual_timeline.mp4"
+    run([
+        "ffmpeg", "-y", "-i", current,
+        "-t", f"{total_duration:.3f}",
+        "-an",
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+        "-pix_fmt", "yuv420p", final_visual
+    ])
+
+    return final_visual
+
+# ------------------------------------------------------------
+# CAPTION VIDEO
+# ------------------------------------------------------------
+def build_caption_video(folder, sentence_data, total_duration):
+    """
+    Build a transparent caption video. Frames update at word timings.
+    """
+    paths, final_path = make_caption_frames(
+        folder, sentence_data, total_duration
+    )
+
+    # If there are many frames, create a concat timeline with each state.
+    timeline = folder / "caption_timeline.txt"
+
+    events = []
+    for i, (t, p) in enumerate(paths):
+        next_t = (
+            paths[i + 1][0]
+            if i + 1 < len(paths)
+            else total_duration
+        )
+        dur = max(0.04, next_t - t)
+        events.append((p, dur))
+
+    # Add final state after the last word until narration ends.
+    if paths:
+        last_t = paths[-1][0]
+        if last_t < total_duration:
+            events[-1] = (events[-1][0], max(events[-1][1], total_duration-last_t))
     else:
-        run(["ffmpeg","-y","-loop","1","-i",card_png,"-i",voice,"-t",f"{duration:.3f}",
-             "-vf","format=yuv420p","-map","0:v","-map","1:a","-c:v","libx264",
-             "-preset","veryfast","-crf","23","-c:a","aac","-b:a","128k","-shortest",out])
+        events = [(final_path, total_duration)]
 
-
-def concat_videos(files, output):
-    list_file = output.parent / "concat.txt"
-    with open(list_file, "w", encoding="utf-8") as f:
-        for p in files:
+    with open(timeline, "w", encoding="utf-8") as f:
+        for p, dur in events:
             f.write(f"file '{Path(p).resolve()}'\n")
-    run(["ffmpeg","-y","-f","concat","-safe","0","-i",list_file,
-         "-c:v","libx264","-preset","veryfast","-crf","23","-c:a","aac",
-         "-b:a","128k","-movflags","+faststart",output])
+            f.write(f"duration {dur:.4f}\n")
+        f.write(f"file '{Path(events[-1][0]).resolve()}'\n")
 
+    caption_video = folder / "captions.mov"
+    run([
+        "ffmpeg", "-y",
+        "-f", "concat", "-safe", "0", "-i", timeline,
+        "-t", f"{total_duration:.3f}",
+        "-vf", f"scale={W}:{H}:flags=lanczos,format=rgba",
+        "-c:v", "qtrle",
+        "-pix_fmt", "argb",
+        caption_video
+    ])
+    return caption_video
 
-def add_music(video, out, duration, folder):
-    # Quiet simple bed. Narration remains clearly dominant.
-    music = folder / "music.m4a"
-    run(["ffmpeg","-y","-f","lavfi","-i","sine=frequency=196:sample_rate=44100",
-         "-t",f"{duration:.2f}","-af",f"volume=0.012,afade=t=in:st=0:d=0.3,afade=t=out:st={max(0.4,duration-0.6):.2f}:d=0.6",
-         "-c:a","aac","-b:a","64k",music])
-    run(["ffmpeg","-y","-i",video,"-i",music,
-         "-filter_complex","[1:a]volume=0.55[m];[0:a][m]amix=inputs=2:duration=first:dropout_transition=1[a]",
-         "-map","0:v","-map","[a]","-t",f"{duration:.2f}","-c:v","copy","-c:a","aac",
-         "-b:a","128k","-movflags","+faststart",out])
+# ------------------------------------------------------------
+# FINAL VIDEO
+# ------------------------------------------------------------
+def compose(video, captions, voice, output, duration):
+    run([
+        "ffmpeg", "-y",
+        "-i", video,
+        "-i", captions,
+        "-i", voice,
+        "-filter_complex",
+        "[0:v][1:v]overlay=0:0:format=auto[v]",
+        "-map", "[v]",
+        "-map", "2:a",
+        "-t", f"{duration:.3f}",
+        "-c:v", "libx264",
+        "-preset", "veryfast",
+        "-crf", "22",
+        "-c:a", "aac",
+        "-b:a", "160k",
+        "-movflags", "+faststart",
+        output
+    ])
 
-# ============================================================
-# BEAT / CAPTION CREATION
-# ============================================================
-def split_text_into_fast_beats(text, target_seconds=TARGET_BEAT_SECONDS):
-    """Split spoken copy into short, natural phrases so the slide and voice stay locked."""
-    text = re.sub(r"\s+", " ", text).strip()
-    if not text:
-        return []
-
-    # First respect natural punctuation.
-    phrases = [p.strip() for p in re.split(r"(?<=[.!?])\s+|(?<=[,;:])\s+", text) if p.strip()]
-    chunks = []
-    max_words = 8  # with the faster male voice, this keeps most slides under ~2 sec
-
-    for phrase in phrases:
-        words = phrase.split()
-        while len(words) > max_words:
-            # Prefer a natural break around the middle rather than chopping randomly.
-            cut = max_words
-            for candidate in range(min(max_words, len(words)-1), max(3, min(max_words, len(words)-1)-3), -1):
-                if words[candidate-1].lower().rstrip(',.!?;:') in {
-                    "the", "a", "an", "to", "and", "for", "your", "one", "with", "when"
-                }:
-                    continue
-                cut = candidate
-                break
-            part = " ".join(words[:cut]).strip()
-            if part:
-                chunks.append(part)
-            words = words[cut:]
-        if words:
-            chunks.append(" ".join(words))
-
-    return chunks
-
-
-def build_beats(topic):
-    beats = []
-
-    # Hook is spoken exactly as shown on screen. Split it so the visual changes fast.
-    for text in split_text_into_fast_beats(topic["hook"]):
-        beats.append({
-            "kind": "hook", "speech": text, "caption": text,
-            "query": topic["visual_hook"],
-        })
-
-    # Each step is spoken as a complete sentence. The caption is the exact same text.
-    for label, detail, query in topic["beats"]:
-        speech = f"{label.title()}. {detail}."
-        for text in split_text_into_fast_beats(speech):
-            beats.append({
-                "kind": "step", "speech": text, "caption": text,
-                "query": query,
-            })
-
-    # CTA is also exact transcript text, with no extra "SAVE THIS" label.
-    for text in split_text_into_fast_beats(topic["cta"]):
-        beats.append({
-            "kind": "cta", "speech": text, "caption": text,
-            "query": topic["visual_hook"],
-        })
-    return beats
-
-# ============================================================
+# ------------------------------------------------------------
 # METADATA
-# ============================================================
-def write_metadata(topic, output_file, duration):
-    title = f"{topic['title']}: {topic['hook']} #shorts"
-    topic_tag = safe_slug(topic["key"]).replace("-", "")
-    hashtags = ["#shorts", "#onlineearning", "#sidehustle", "#makemoneyonline", f"#{topic_tag}"]
+# ------------------------------------------------------------
+def write_metadata(topic, output_file, duration, script):
+    title = f"{topic['title']}: practical steps #shorts"
+
+    tag = safe_slug(topic["key"]).replace("-", "")
+    hashtags = [
+        "#shorts",
+        "#onlineearning",
+        "#sidehustle",
+        "#makemoneyonline",
+        f"#{tag}",
+    ]
+
     description = (
-        f"{topic['title']} — practical online earning content.\n\n"
-        f"This Short covers: {', '.join(topic['keywords'])}.\n\n"
-        "Educational content only. No income is guaranteed; results vary by skill, effort, market, location and eligibility.\n\n"
-        "Visuals provided by Pexels: https://www.pexels.com/\n\n"
+        f"{topic['title']} — practical online earning content.\\n\\n"
+        f"Video script:\\n{script}\\n\\n"
+        "Educational content only. No income is guaranteed; results vary "
+        "by skill, effort, market, location and eligibility.\\n\\n"
+        "Visuals provided by Pexels: https://www.pexels.com/\\n\\n"
         + " ".join(hashtags)
     )
+
     tags = list(dict.fromkeys([
-        topic["title"].lower(), "online earning", "make money online", "side hustle",
-        "earning tips", "online business", "money tips", "shorts", "youtube shorts",
+        topic["title"].lower(),
+        "online earning",
+        "make money online",
+        "side hustle",
+        "earning tips",
+        "online business",
+        "money tips",
+        "shorts",
         *[x.lower() for x in topic["keywords"]],
     ]))
-    data = {
-        "title": title, "description": description, "hashtags": hashtags, "tags": tags,
-        "topic": topic["title"], "keywords": topic["keywords"],
-        "duration_seconds": round(duration, 2), "voice": VOICE,
-        "trend_source_title": topic.get("trend_source_title"),
-        "trend_views": topic.get("trend_views"), "trend_age_hours": topic.get("trend_age_hours"),
-        "trend_score": topic.get("trend_score"), "original_content": True,
-        "reference_style": "fast-cut portrait footage + exact spoken captions + fresh visual every 1–2 seconds",
-        "note": "Trend-inspired original educational Short; captions are synchronized to the narration and visuals refresh every 1–2 seconds.",
-    }
-    output_file.with_suffix(".txt").write_text(json.dumps(data, indent=2), encoding="utf-8")
 
-# ============================================================
-# CREATE SHORT
-# ============================================================
+    data = {
+        "title": title,
+        "description": description,
+        "hashtags": hashtags,
+        "tags": tags,
+        "topic": topic["title"],
+        "script": script,
+        "duration_seconds": round(duration, 2),
+        "voice": VOICE,
+        "voice_rate": VOICE_RATE,
+        "continuous_voice": True,
+        "word_by_word_captions": True,
+        "visual_changes": "one matching visual per sentence with smooth crossfade",
+        "trend_source_title": topic.get("trend_source_title"),
+        "trend_views": topic.get("trend_views"),
+        "trend_age_hours": topic.get("trend_age_hours"),
+        "trend_score": topic.get("trend_score"),
+        "original_content": True,
+    }
+
+    output_file.with_suffix(".txt").write_text(
+        json.dumps(data, indent=2),
+        encoding="utf-8"
+    )
+
+# ------------------------------------------------------------
+# CREATE ONE SHORT
+# ------------------------------------------------------------
 def create_short(topic, number):
     folder = WORK_DIR / f"video_{number}"
+
     if folder.exists():
         shutil.rmtree(folder)
+
     folder.mkdir(parents=True, exist_ok=True)
 
-    beats = build_beats(topic)
-    total = len(beats)
-    scene_files = []
+    sentence_list = list(topic["sentences"])
+    sentence_list.append(topic["cta"])
 
-    # Each caption/voice beat gets its own visual. This prevents missing slides and
-    # makes the edit change approximately every 1–2 seconds.
-    for i, beat in enumerate(beats, start=1):
-        voice_path = folder / f"voice_{i}.mp3"
-        make_voice(beat["speech"], voice_path)
-        vd = media_duration(voice_path)
-        duration = max(MIN_BEAT_SECONDS, min(MAX_BEAT_SECONDS, vd + 0.02))
-        beat["duration"] = duration
+    script = " ".join(x[0] for x in sentence_list)
 
-        # Fresh, topic-specific footage for every spoken beat.
-        modifiers = [
-            "cinematic", "close up", "real person", "hands", "smartphone",
-            "screen", "workspace", "business", "vertical video", "action"
-        ]
-        modifier = modifiers[(i - 1) % len(modifiers)]
-        visual_query = f"{beat['query']} {modifier}"
-        media = get_visual(visual_query, folder, i)
-        beat["media"] = media
+    voice_path = folder / "narration.mp3"
+    boundaries = make_voice(script, voice_path)
+    total_duration = media_duration(voice_path)
 
-    # Build each scene after its exact voice duration is known.
-    for i, beat in enumerate(beats, start=1):
-        card_path = folder / f"overlay_{i}.png"
-        prepared_path = folder / f"prepared_{i}.mp4"
-        scene_path = folder / f"scene_{i}.mp4"
+    # If the script becomes too long, speed the entire continuous narration.
+    # This preserves synchronization because captions are built from the final audio.
+    if total_duration > MAX_SECONDS:
+        factor = total_duration / MAX_SECONDS
+        sped_voice = folder / "narration_sped.mp3"
+        atempo = max(1.0, min(2.0, factor))
 
-        overlay = render_overlay(beat["caption"])
-        overlay.save(card_path, "PNG")
+        run([
+            "ffmpeg", "-y",
+            "-i", voice_path,
+            "-filter:a", f"atempo={atempo:.5f}",
+            "-c:a", "aac", "-b:a", "160k",
+            sped_voice
+        ])
 
-        prepared = None
-        if beat.get("media"):
-            prepared = prepare_visual_clip(
-                beat["media"], prepared_path, beat["duration"], variant=i
-            )
-        make_scene_video(
-            card_path, prepared, folder / f"voice_{i}.mp3",
-            beat["duration"], scene_path, i
+        voice_path = sped_voice
+        total_duration = media_duration(voice_path)
+
+        # Recreate boundaries for the sped narration is unnecessary for relative
+        # timing below; proportional sentence timing is used if boundaries mismatch.
+        boundaries = []
+
+    sentence_data = align_sentences(
+        sentence_list,
+        boundaries,
+        total_duration
+    )
+
+    # Visuals change at every spoken sentence. We do not cut a sentence in half.
+    # The scripts themselves use short sentences, normally around 1–2 seconds.
+    # If a sentence is slightly longer, the narration stays continuous and the
+    # visual remains until the sentence finishes.
+    for i in range(len(sentence_data) - 1):
+        sentence_data[i]["end"] = max(
+            sentence_data[i]["start"] + MIN_SENTENCE,
+            sentence_data[i]["end"]
         )
-        scene_files.append(scene_path)
 
-    joined = folder / "joined.mp4"
-    concat_videos(scene_files, joined)
-    duration = media_duration(joined)
+    sentence_data[-1]["end"] = total_duration
 
-    # Natural duration; if a topic somehow becomes too long, speed it up rather than
-    # deleting the synchronized caption/voice beats.
-    if duration > MAX_SECONDS:
-        factor = duration / MAX_SECONDS
-        fixed = folder / "fixed.mp4"
-        atempo = max(0.5, min(2.0, factor))
-        run(["ffmpeg", "-y", "-i", joined,
-             "-filter_complex", f"[0:v]setpts=PTS/{factor}[v];[0:a]atempo={atempo}[a]",
-             "-map", "[v]", "-map", "[a]", "-c:v", "libx264", "-preset", "veryfast",
-             "-crf", "23", "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", fixed])
-        shutil.copy2(fixed, joined)
-        duration = media_duration(joined)
+    print("\nSCRIPT:")
+    for i, s in enumerate(sentence_data, 1):
+        print(f"{i}. {s['text']}  [{s['start']:.2f}-{s['end']:.2f}s]")
+
+    visual = build_visual_timeline(
+        sentence_data,
+        folder,
+        total_duration
+    )
+
+    captions = build_caption_video(
+        folder,
+        sentence_data,
+        total_duration,
+        word_boundaries=boundaries
+    )
 
     final = folder / "final.mp4"
-    add_music(joined, final, duration, folder)
+    compose(
+        visual,
+        captions,
+        voice_path,
+        final,
+        total_duration
+    )
 
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     output = OUTPUT_DIR / f"online_earning_short_{number}.mp4"
     shutil.copy2(final, output)
-    write_metadata(topic, output, duration)
-    print(f"CREATED: {output} | {duration:.1f}s | {topic['title']} | {total} synced beats")
+
+    write_metadata(
+        topic,
+        output,
+        total_duration,
+        script
+    )
+
+    print(
+        f"CREATED: {output} | {total_duration:.1f}s | "
+        f"{topic['title']} | {len(sentence_data)} spoken steps"
+    )
+
     return output
 
-# ============================================================
+# ------------------------------------------------------------
 # MAIN
-# ============================================================
+# ------------------------------------------------------------
 def main():
     require_program("ffmpeg")
     require_program("ffprobe")
+
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     WORK_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -784,9 +1247,13 @@ def main():
         p.unlink(missing_ok=True)
 
     selected = discover_topics()
+
     print("\nSELECTED TOPICS:")
     for i, topic in enumerate(selected, 1):
-        print(f"{i}. {topic['title']} | trend={topic.get('trend_source_title', 'fallback')}")
+        print(
+            f"{i}. {topic['title']} | "
+            f"trend={topic.get('trend_source_title', 'fallback')}"
+        )
 
     made = []
     for i, topic in enumerate(selected, 1):
@@ -799,7 +1266,6 @@ def main():
     print(f"FINISHED: {len(made)}/{SHORT_COUNT}")
     for p in made:
         print(p)
-
 
 if __name__ == "__main__":
     main()
