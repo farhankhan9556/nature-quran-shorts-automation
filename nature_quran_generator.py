@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ONLINE EARNING SHORTS GENERATOR V7
+ONLINE EARNING SHORTS GENERATOR FINAL
 
 Main improvements:
 - One continuous Edge-TTS narration per Short (no chopped voice between slides).
@@ -56,7 +56,7 @@ TREND_WINDOW_DAYS = int(os.getenv("TREND_WINDOW_DAYS", "7"))
 
 ROOT = Path(__file__).resolve().parent
 OUTPUT_DIR = ROOT / "output"
-WORK_DIR = ROOT / "_work_reference_style_v7"
+WORK_DIR = ROOT / "_work_reference_style_final"
 FONTS_DIR = ROOT / "fonts"
 
 REGULAR_FONT = FONTS_DIR / "NotoSans-Regular.ttf"
@@ -601,7 +601,7 @@ def align_sentences(sentences, boundaries, total_duration):
 
 # ------------------------------------------------------------
 # CAPTION DESIGN
-# -------------------------------------------------def _rounded_gradient_card(base, box, top_rgb, bottom_rgb, alpha=205, radius=34):
+def _rounded_gradient_card(base, box, top_rgb, bottom_rgb, alpha=205, radius=34):
     """Draw a polished translucent gradient card with a subtle border."""
     x1, y1, x2, y2 = map(int, box)
     layer = Image.new("RGBA", (x2 - x1, y2 - y1), (0, 0, 0, 0))
@@ -825,8 +825,6 @@ def caption_image(completed_steps, current_step=None, current_words=None):
             text_y += line_h
 
     return img
-
-return img
 
 
 def make_caption_frames(folder, sentence_data, total_duration, word_boundaries=None):
