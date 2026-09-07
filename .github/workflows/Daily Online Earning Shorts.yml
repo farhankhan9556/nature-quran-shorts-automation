@@ -4,7 +4,8 @@ on:
   workflow_dispatch:
 
   schedule:
-    - cron: "0 6 * * *"
+    # 4:00 AM UAE = 00:00 UTC
+    - cron: "0 0 * * *"
 
 jobs:
 
@@ -51,12 +52,9 @@ jobs:
 
       - name: Upload generated Shorts
         uses: actions/upload-artifact@v4
-
         with:
           name: online-earning-shorts
-
           path: |
             output/*.mp4
             output/*.txt
-
           if-no-files-found: error
