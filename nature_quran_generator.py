@@ -1,19 +1,21 @@
 #!/usr/bin/env python3
 """
-Online Earning Shorts Generator
-Design direction:
-- Clean editorial/social-media explainer look
-- Light background
-- Blue/cyan geometric accents
-- Large bold typography
-- Animated cards, arrows and check marks
-- Small practical video card instead of generic full-screen AI stock footage
-- Natural voiceover
-- Flexible short length (roughly 12–30 seconds)
-- Generates 3 different Shorts per run
+Online Earning Shorts Generator - Trending Edition
 
-Keep this filename as nature_quran_generator.py so the existing GitHub workflow
-does not need to be renamed.
+What it does:
+- Checks YouTube daily for recent/high-view online-earning videos.
+- Uses the trend titles/keywords only as topic inspiration; it does NOT copy scripts.
+- Selects 3 different trend angles per run.
+- Creates original, practical vertical reels with a clean editorial design.
+- Uses a youthful male TTS voice (Eric) with a slightly higher pitch.
+- Uses Pexels portrait footage as small practical visual cards.
+- Flexible video length: normally about 12-30 seconds.
+
+Required GitHub Actions secrets:
+  PEXELS_API_KEY
+  YOUTUBE_API_KEY
+
+Keep this filename as nature_quran_generator.py if your workflow already calls it.
 """
 
 import asyncio
@@ -23,9 +25,9 @@ import random
 import re
 import shutil
 import subprocess
-import textwrap
-import time
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from urllib.parse import quote_plus
 
 import requests
 from PIL import Image, ImageDraw, ImageFont
@@ -35,38 +37,37 @@ try:
 except ImportError:
     edge_tts = None
 
-
 # ============================================================
 # SETTINGS
 # ============================================================
-
 VIDEO_WIDTH = 1080
 VIDEO_HEIGHT = 1920
 FPS = 30
-
 SHORT_COUNT = 3
 MIN_SECONDS = 12
 MAX_SECONDS = 30
 
-VOICE = "en-US-GuyNeural"
-VOICE_RATE = "+8%"
-VOICE_PITCH = "+0Hz"
+# Youthful male voice. Microsoft currently lists EricNeural as a male
+# standard voice; a small positive pitch shift makes it sound younger.
+VOICE = "en-US-EricNeural"
+VOICE_RATE = "+10%"
+VOICE_PITCH = "+4Hz"
 
 PEXELS_API_KEY = os.getenv("PEXELS_API_KEY", "").strip()
+YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY", "").strip()
+YOUTUBE_REGION = os.getenv("YOUTUBE_REGION", "US").strip() or "US"
+TREND_WINDOW_DAYS = int(os.getenv("TREND_WINDOW_DAYS", "7"))
 
 ROOT = Path(__file__).resolve().parent
 OUTPUT_DIR = ROOT / "output"
 WORK_DIR = ROOT / "_work_online_earning"
 FONTS_DIR = ROOT / "fonts"
-
 REGULAR_FONT = FONTS_DIR / "NotoSans-Regular.ttf"
 BOLD_FONT = FONTS_DIR / "NotoSans-Bold.ttf"
-
-# Fallback fonts available on GitHub Actions Ubuntu.
 SYSTEM_REGULAR = Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf")
 SYSTEM_BOLD = Path("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf")
 
-# Brand/design colors.
+# Clean editorial palette inspired by the reference reel.
 BG = (248, 250, 252, 255)
 BLUE = (18, 115, 232, 255)
 DARK = (22, 28, 38, 255)
@@ -74,227 +75,228 @@ MUTED = (93, 103, 118, 255)
 WHITE = (255, 255, 255, 255)
 PALE_BLUE = (228, 241, 255, 255)
 GREEN = (24, 155, 91, 255)
+YELLOW = (255, 196, 64, 255)
 
-TOPICS = [
-    {
-        "key": "affiliate",
-        "search": "affiliate marketing laptop online shopping",
-        "title": "Affiliate marketing",
-        "hook": "Want to earn online?",
-        "steps": [
-            ("1", "Pick a product", "Choose something people already want."),
-            ("2", "Get your link", "Use an affiliate program."),
-            ("3", "Share useful content", "Recommend it with an honest reason."),
-        ],
-        "script": (
-            "Want to earn online? Try affiliate marketing. "
-            "Pick a useful product, get your affiliate link, and make helpful content around it. "
-            "You earn a commission when your content leads to a qualifying purchase."
-        ),
-        "caption": "Affiliate marketing • useful content • honest recommendations",
-    },
-    {
-        "key": "tiktok",
-        "search": "TikTok creator smartphone social media",
-        "title": "TikTok income",
-        "hook": "TikTok can be more than views.",
-        "steps": [
-            ("1", "Build a niche", "Choose one topic people follow."),
-            ("2", "Post useful videos", "Teach, compare or demonstrate."),
-            ("3", "Monetize", "Use eligible features, affiliates or services."),
-        ],
-        "script": (
-            "TikTok can be more than views. Pick one useful niche, post practical videos consistently, "
-            "and build trust. Depending on your location and eligibility, you can monetize through "
-            "platform features, affiliates, or your own services."
-        ),
-        "caption": "Views are attention. Trust is what you build.",
-    },
-    {
-        "key": "ai-freelance",
-        "search": "AI freelancer laptop desk artificial intelligence",
-        "title": "AI freelancing",
-        "hook": "Use AI as a work tool.",
-        "steps": [
-            ("1", "Choose one service", "Writing, research, design or admin."),
-            ("2", "Use AI to speed up", "Edit and check everything yourself."),
-            ("3", "Sell the result", "Show samples and solve a real problem."),
-        ],
-        "script": (
-            "Use AI as a work tool, not a magic money button. Pick one service, "
-            "use AI to speed up the work, check the final result yourself, and sell a clear outcome "
-            "to clients who actually need it."
-        ),
-        "caption": "Skill + AI + a real client problem",
-    },
-    {
-        "key": "youtube",
-        "search": "YouTube creator smartphone video editing",
-        "title": "YouTube Shorts",
-        "hook": "Small videos can build a channel.",
-        "steps": [
-            ("1", "Solve one problem", "Give one useful answer."),
-            ("2", "Hook fast", "Make the first seconds clear."),
-            ("3", "Stay original", "Add your own explanation and examples."),
-        ],
-        "script": (
-            "Small videos can build a channel. Solve one simple problem, make the opening clear, "
-            "and keep the video useful. Your own explanation and examples are more valuable than "
-            "copying someone else's content."
-        ),
-        "caption": "Useful + original + consistent beats empty hype.",
-    },
-    {
-        "key": "digital-products",
-        "search": "digital product laptop template creator",
-        "title": "Digital products",
-        "hook": "Create once. Improve over time.",
-        "steps": [
-            ("1", "Find a problem", "Look for something people repeatedly need."),
-            ("2", "Make a simple solution", "Template, checklist or guide."),
-            ("3", "Improve it", "Use customer feedback to make it better."),
-        ],
-        "script": (
-            "Digital products can be simple. Find a problem people repeatedly have, "
-            "turn your solution into a template, checklist or guide, and improve it from real feedback. "
-            "The goal is usefulness, not a get-rich-quick promise."
-        ),
-        "caption": "Template • checklist • guide • useful resource",
-    },
-    {
-        "key": "freelancing",
-        "search": "freelancer laptop desk client work",
-        "title": "Freelancing",
-        "hook": "Don't sell 'anything'. Sell one result.",
-        "steps": [
-            ("1", "Pick one skill", "Start with something you can actually do."),
-            ("2", "Package it", "Make the offer easy to understand."),
-            ("3", "Show proof", "Create samples before chasing clients."),
-        ],
-        "script": (
-            "Don't sell everything. Start with one skill you can actually do. "
-            "Package it as one clear service, create a few strong samples, and show clients the result "
-            "you can help them achieve."
-        ),
-        "caption": "One skill • one offer • clear proof",
-    },
-    {
-        "key": "online-selling",
-        "search": "online store ecommerce laptop smartphone",
-        "title": "Online selling",
-        "hook": "Before you buy stock, test demand.",
-        "steps": [
-            ("1", "Choose a problem", "Find something customers want solved."),
-            ("2", "Test interest", "Use content or a small listing."),
-            ("3", "Track the numbers", "Watch costs, sales and profit."),
-        ],
-        "script": (
-            "Before buying lots of stock, test demand. Choose a product that solves a real problem, "
-            "start small, and track your selling costs, fees, returns and actual profit. "
-            "Sales are not the same thing as profit."
-        ),
-        "caption": "Revenue is not profit.",
-    },
-    {
-        "key": "remote-work",
-        "search": "remote work laptop home office",
-        "title": "Remote work",
-        "hook": "Want a remote income?",
-        "steps": [
-            ("1", "Build a useful skill", "Focus on a skill employers need."),
-            ("2", "Make a simple CV", "Show results, not just duties."),
-            ("3", "Apply consistently", "Use legitimate job platforms and company sites."),
-        ],
-        "script": (
-            "Want a remote income? Build a skill employers actually need, make a simple CV that shows "
-            "results, and apply consistently through legitimate job platforms or company career pages. "
-            "Never pay someone just to get a job."
-        ),
-        "caption": "Never pay a stranger for a promised job.",
-    },
-    {
-        "key": "print-on-demand",
-        "search": "print on demand t shirt ecommerce laptop",
-        "title": "Print on demand",
-        "hook": "You can test designs without holding stock.",
-        "steps": [
-            ("1", "Choose a niche", "Make designs for a specific audience."),
-            ("2", "Create original designs", "Avoid copyrighted characters and brands."),
-            ("3", "Test demand", "Keep improving what people respond to."),
-        ],
-        "script": (
-            "Print on demand lets you test original designs without storing inventory yourself. "
-            "Choose a clear niche, create your own designs, and test demand. "
-            "Avoid copyrighted characters, logos and artwork you do not have permission to use."
-        ),
-        "caption": "Original designs only.",
-    },
-    {
-        "key": "online-course",
-        "search": "online course laptop education creator",
-        "title": "Online courses",
-        "hook": "Know something useful? Teach it clearly.",
-        "steps": [
-            ("1", "Choose one outcome", "Teach one specific result."),
-            ("2", "Break it down", "Use short practical lessons."),
-            ("3", "Add examples", "Show exactly how to apply it."),
-        ],
-        "script": (
-            "If you know something useful, you can turn it into a simple course. "
-            "Choose one specific outcome, break it into short lessons, and use real examples. "
-            "A clear result is more useful than a course packed with random information."
-        ),
-        "caption": "Teach one clear outcome.",
-    },
-    {
-        "key": "ai-tools",
-        "search": "AI tools laptop productivity",
-        "title": "AI tools",
-        "hook": "The tool isn't the business.",
-        "steps": [
-            ("1", "Find a boring task", "Look for work that takes too long."),
-            ("2", "Use AI to speed it up", "Keep human review in the process."),
-            ("3", "Sell the result", "Charge for useful work, not hype."),
-        ],
-        "script": (
-            "The AI tool is not the business. Find a boring task that takes too long, "
-            "use AI to speed up part of the workflow, review the result, and offer the finished service "
-            "to someone who needs it."
-        ),
-        "caption": "Sell useful results, not AI hype.",
-    },
-    {
-        "key": "side-hustle",
-        "search": "side hustle laptop smartphone creator",
-        "title": "Side hustle",
-        "hook": "Start smaller than you think.",
-        "steps": [
-            ("1", "Choose one idea", "Don't start five things at once."),
-            ("2", "Test it cheaply", "Get your first real feedback."),
-            ("3", "Improve from evidence", "Keep what works and remove what doesn't."),
-        ],
-        "script": (
-            "Starting a side hustle? Start smaller than you think. Pick one idea, test it cheaply, "
-            "get real feedback, and improve from the results. You do not need a huge investment "
-            "to learn whether an idea has demand."
-        ),
-        "caption": "Test first. Scale later.",
-    },
+# Search themes. A random subset is checked every run so the search pattern
+# changes slightly from day to day.
+TREND_QUERIES = [
+    "make money online",
+    "online earning tips",
+    "side hustle",
+    "AI money making",
+    "affiliate marketing",
+    "freelancing online",
+    "TikTok monetization",
+    "YouTube Shorts money",
+    "digital products",
+    "remote work income",
+    "online business ideas",
+    "passive income ideas",
 ]
 
+# Original content templates. Trend titles select an angle; these templates
+# provide original narration instead of copying another creator.
+TOPIC_TEMPLATES = {
+    "ai": {
+        "key": "ai-tools",
+        "title": "AI freelancing",
+        "search": "AI freelancer laptop desk",
+        "hooks": [
+            "AI is useful when it saves real work.",
+            "Want to use AI to earn? Start with a skill.",
+            "Don't sell AI. Sell the result AI helps you create.",
+        ],
+        "steps": [
+            ("1", "Pick one service", "Writing, research, design or admin."),
+            ("2", "Use AI to speed up", "Edit and check the result yourself."),
+            ("3", "Sell the outcome", "Show samples that solve a real problem."),
+        ],
+        "script": "Pick one freelance service, use AI to speed up the work, check the final result yourself, and sell a clear outcome to clients who actually need it.",
+        "caption": "Skill + AI + a real client problem",
+    },
+    "affiliate": {
+        "key": "affiliate-marketing",
+        "title": "Affiliate marketing",
+        "search": "affiliate marketing shopping laptop",
+        "hooks": [
+            "Affiliate marketing starts with useful content.",
+            "You don't need your own product to start.",
+            "Here's the simple affiliate model.",
+        ],
+        "steps": [
+            ("1", "Pick a useful product", "Choose something your audience needs."),
+            ("2", "Get an affiliate link", "Use a legitimate affiliate program."),
+            ("3", "Explain the value", "Recommend it honestly and clearly."),
+        ],
+        "script": "Pick a useful product, join a legitimate affiliate program, and create helpful content explaining why it may be useful. A qualifying purchase can earn you a commission, depending on the program.",
+        "caption": "Helpful content • honest recommendations",
+    },
+    "tiktok": {
+        "key": "tiktok-earning",
+        "title": "TikTok earning",
+        "search": "TikTok creator smartphone social media",
+        "hooks": [
+            "TikTok is not only about getting views.",
+            "Want to turn attention into an income stream?",
+            "The first step on TikTok is a clear niche.",
+        ],
+        "steps": [
+            ("1", "Choose one niche", "Make it easy for people to know your topic."),
+            ("2", "Post useful videos", "Teach, compare or demonstrate something."),
+            ("3", "Monetize carefully", "Use eligible features, affiliates or services."),
+        ],
+        "script": "Choose one useful niche, post practical videos consistently, and build trust. Depending on your location and eligibility, income can come from platform features, affiliates, or your own services.",
+        "caption": "Attention first. Trust next.",
+    },
+    "youtube": {
+        "key": "youtube-shorts",
+        "title": "YouTube Shorts",
+        "search": "YouTube creator smartphone editing",
+        "hooks": [
+            "A Short can solve one problem in seconds.",
+            "Want to grow a useful Shorts channel?",
+            "Don't chase views before you have a useful idea.",
+        ],
+        "steps": [
+            ("1", "Solve one problem", "Give one clear, useful answer."),
+            ("2", "Hook quickly", "Make the opening easy to understand."),
+            ("3", "Stay original", "Add your own explanation and examples."),
+        ],
+        "script": "Solve one simple problem, make the opening clear, and keep the video useful. Add your own explanation and examples instead of copying another creator's content.",
+        "caption": "Useful + original + consistent",
+    },
+    "freelance": {
+        "key": "freelancing",
+        "title": "Freelancing",
+        "search": "freelancer laptop client work",
+        "hooks": [
+            "Don't sell everything. Sell one result.",
+            "One clear freelance service is easier to explain.",
+            "Want your first freelance client? Start with proof.",
+        ],
+        "steps": [
+            ("1", "Pick one skill", "Start with something you can actually do."),
+            ("2", "Package the service", "Make the offer simple to understand."),
+            ("3", "Show proof", "Create useful samples before pitching."),
+        ],
+        "script": "Start with one skill you can actually do. Package it as one clear service, create a few strong samples, and show clients the result you can help them achieve.",
+        "caption": "One skill • one offer • clear proof",
+    },
+    "digital": {
+        "key": "digital-products",
+        "title": "Digital products",
+        "search": "digital product template laptop creator",
+        "hooks": [
+            "A simple digital product can solve a real problem.",
+            "You don't need a huge course to sell something useful.",
+            "Find a repeated problem. Turn the solution into a resource.",
+        ],
+        "steps": [
+            ("1", "Find a problem", "Look for something people repeatedly need."),
+            ("2", "Build a simple resource", "Try a template, checklist or guide."),
+            ("3", "Improve from feedback", "Make it better using real user needs."),
+        ],
+        "script": "Find a problem people repeatedly have, turn your solution into a useful template, checklist or guide, and improve it from real feedback. The goal is usefulness, not a get-rich-quick promise.",
+        "caption": "Template • checklist • guide",
+    },
+    "selling": {
+        "key": "online-selling",
+        "title": "Online selling",
+        "search": "ecommerce online store smartphone laptop",
+        "hooks": [
+            "Before buying stock, test demand.",
+            "Sales are not the same as profit.",
+            "Want to sell online? Start with the numbers.",
+        ],
+        "steps": [
+            ("1", "Choose a real need", "Look for a product that solves a problem."),
+            ("2", "Test interest", "Start small before buying lots of stock."),
+            ("3", "Track profit", "Include fees, returns and delivery costs."),
+        ],
+        "script": "Before buying lots of stock, test demand. Start small and track selling fees, delivery, returns, product cost and actual profit. Revenue alone does not tell you if a business works.",
+        "caption": "Revenue ≠ profit",
+    },
+    "remote": {
+        "key": "remote-work",
+        "title": "Remote work",
+        "search": "remote work laptop home office",
+        "hooks": [
+            "Want a remote income? Build a useful skill first.",
+            "Remote work starts with proof, not promises.",
+            "A real remote job should not require a mystery payment.",
+        ],
+        "steps": [
+            ("1", "Build a skill", "Focus on something employers need."),
+            ("2", "Show results", "Use a simple CV and portfolio."),
+            ("3", "Apply safely", "Use legitimate companies and platforms."),
+        ],
+        "script": "Build a skill employers actually need, make a simple CV that shows results, and apply through legitimate companies or job platforms. Never pay a stranger for a promised job.",
+        "caption": "Skills + proof + safe applications",
+    },
+    "pod": {
+        "key": "print-on-demand",
+        "title": "Print on demand",
+        "search": "print on demand t shirt ecommerce",
+        "hooks": [
+            "Want to test designs without storing stock?",
+            "Print on demand can reduce inventory risk.",
+            "The hard part is not uploading a design. It's finding demand.",
+        ],
+        "steps": [
+            ("1", "Choose a niche", "Make designs for a specific audience."),
+            ("2", "Create original work", "Avoid copyrighted characters and logos."),
+            ("3", "Test demand", "Improve what your audience responds to."),
+        ],
+        "script": "Print on demand lets you test original designs without storing inventory yourself. Choose a niche, create your own designs, and test demand. Avoid copyrighted artwork and brands you do not have permission to use.",
+        "caption": "Original designs only",
+    },
+    "course": {
+        "key": "online-course",
+        "title": "Online courses",
+        "search": "online course creator laptop education",
+        "hooks": [
+            "Know something useful? Teach one clear outcome.",
+            "A useful course solves a specific problem.",
+            "Don't make a huge course before testing the idea.",
+        ],
+        "steps": [
+            ("1", "Choose one outcome", "Teach one specific result."),
+            ("2", "Make short lessons", "Keep every lesson practical."),
+            ("3", "Add examples", "Show how to apply the skill."),
+        ],
+        "script": "Choose one useful outcome, break it into short practical lessons, and show real examples. Test the idea before spending weeks building a huge course.",
+        "caption": "One outcome • short lessons • examples",
+    },
+    "general": {
+        "key": "online-earning",
+        "title": "Online earning",
+        "search": "online earning laptop smartphone",
+        "hooks": [
+            "Want to earn online? Start with a real problem.",
+            "Ignore the easy-money hype. Build something useful.",
+            "A better online income plan starts small.",
+        ],
+        "steps": [
+            ("1", "Choose one skill", "Pick something you can improve."),
+            ("2", "Solve one problem", "Make your offer useful and specific."),
+            ("3", "Test the market", "Learn from real people and results."),
+        ],
+        "script": "Ignore the easy-money hype. Choose one useful skill, solve one specific problem, and test your idea with real people. Improve from feedback instead of chasing every new trend.",
+        "caption": "Useful skill • real problem • real feedback",
+    },
+}
 
 # ============================================================
-# HELPERS
+# UTILITIES
 # ============================================================
-
 def run(cmd, check=True, capture=False):
-    print(">", " ".join(str(x) for x in cmd))
+    print("$", " ".join(str(x) for x in cmd))
     return subprocess.run(
         [str(x) for x in cmd],
         check=check,
         text=True,
         stdout=subprocess.PIPE if capture else None,
-        stderr=subprocess.PIPE if capture else None,
+        stderr=subprocess.STDOUT if capture else None,
     )
 
 
@@ -304,33 +306,25 @@ def require_program(name):
 
 
 def font_path(bold=False):
-    candidates = [BOLD_FONT if bold else REGULAR_FONT,
-                  SYSTEM_BOLD if bold else SYSTEM_REGULAR]
-    for p in candidates:
-        if p and p.exists():
-            return p
-    raise FileNotFoundError(
-        "NotoSans fonts were not found. Put NotoSans-Regular.ttf and "
-        "NotoSans-Bold.ttf inside the fonts/ folder."
-    )
+    preferred = BOLD_FONT if bold else REGULAR_FONT
+    fallback = SYSTEM_BOLD if bold else SYSTEM_REGULAR
+    if preferred.exists():
+        return str(preferred)
+    if fallback.exists():
+        return str(fallback)
+    raise RuntimeError("No usable font found.")
 
 
 def F(size, bold=False):
-    return ImageFont.truetype(str(font_path(bold)), size=size)
-
-
-def text_width(draw, text, font):
-    box = draw.textbbox((0, 0), text, font=font)
-    return box[2] - box[0]
+    return ImageFont.truetype(font_path(bold), size)
 
 
 def wrap_text(draw, text, font, max_width):
     words = text.split()
-    lines = []
-    current = ""
+    lines, current = [], ""
     for word in words:
-        test = word if not current else current + " " + word
-        if text_width(draw, test, font) <= max_width:
+        test = f"{current} {word}".strip()
+        if draw.textbbox((0, 0), test, font=font)[2] <= max_width:
             current = test
         else:
             if current:
@@ -347,16 +341,15 @@ def rounded_rect(draw, xy, radius, fill, outline=None, width=1):
 
 def add_centered_text(draw, text, y, font, fill, max_width=900, spacing=8):
     lines = wrap_text(draw, text, font, max_width)
-    heights = []
-    for line in lines:
+    line_heights = [draw.textbbox((0, 0), x, font=font)[3] for x in lines]
+    total = sum(line_heights) + spacing * max(0, len(lines) - 1)
+    cy = y
+    for line, h in zip(lines, line_heights):
         box = draw.textbbox((0, 0), line, font=font)
-        heights.append(box[3] - box[1])
-    total = sum(heights) + spacing * (len(lines) - 1)
-    yy = y - total / 2
-    for line, h in zip(lines, heights):
-        w = text_width(draw, line, font)
-        draw.text(((VIDEO_WIDTH - w) / 2, yy), line, font=font, fill=fill)
-        yy += h + spacing
+        w = box[2] - box[0]
+        draw.text(((VIDEO_WIDTH - w) / 2, cy), line, font=font, fill=fill)
+        cy += h + spacing
+    return total
 
 
 def make_slide_base():
@@ -364,78 +357,61 @@ def make_slide_base():
     d = ImageDraw.Draw(img)
 
     # Reference-style side geometry.
-    d.polygon(
-        [(0, 0), (145, 0), (95, 470), (0, 590)],
-        fill=PALE_BLUE,
-    )
-    d.polygon(
-        [(VIDEO_WIDTH, VIDEO_HEIGHT), (VIDEO_WIDTH - 155, VIDEO_HEIGHT),
-         (VIDEO_WIDTH - 90, VIDEO_HEIGHT - 500), (VIDEO_WIDTH, VIDEO_HEIGHT - 600)],
-        fill=PALE_BLUE,
-    )
+    d.polygon([(0, 0), (70, 0), (22, 1920), (0, 1920)], fill=BLUE)
+    d.polygon([(1010, 0), (1080, 0), (1080, 1920), (1058, 1920)], fill=PALE_BLUE)
+    d.rectangle((70, 0, 76, VIDEO_HEIGHT), fill=PALE_BLUE)
 
-    # Small blue accent bars.
-    d.rounded_rectangle((55, 92, 170, 112), 10, fill=BLUE)
-    d.rounded_rectangle((910, 1780, 1025, 1800), 10, fill=BLUE)
-
+    # Tiny top and bottom accents.
+    d.rounded_rectangle((110, 52, 275, 88), radius=18, fill=PALE_BLUE)
+    d.rounded_rectangle((805, 1830, 970, 1866), radius=18, fill=PALE_BLUE)
     return img, d
 
 
 def add_brand(d, title):
-    # Small top brand line.
-    f = F(28, bold=True)
-    d.text((68, 142), "ONLINE EARNING", font=f, fill=BLUE)
-
-    # Topic badge.
-    badge_font = F(26, bold=True)
-    tw = text_width(d, title.upper(), badge_font)
-    x1 = VIDEO_WIDTH - 70 - tw - 44
-    rounded_rect(d, (x1, 130, VIDEO_WIDTH - 70, 184), 20, fill=WHITE, outline=(220, 226, 234, 255), width=2)
-    d.text((x1 + 22, 143), title.upper(), font=badge_font, fill=DARK)
+    d.text((110, 115), "EARN SMART", font=F(30, True), fill=BLUE)
+    d.text((110, 160), title.upper(), font=F(24, True), fill=MUTED)
 
 
 def add_footer(d, text="FOLLOW FOR PRACTICAL ONLINE EARNING TIPS"):
-    f = F(24, bold=True)
-    tw = text_width(d, text, f)
-    rounded_rect(
-        d,
-        ((VIDEO_WIDTH - tw) / 2 - 28, VIDEO_HEIGHT - 145,
-         (VIDEO_WIDTH + tw) / 2 + 28, VIDEO_HEIGHT - 92),
-        18,
-        fill=DARK,
-    )
-    d.text(((VIDEO_WIDTH - tw) / 2, VIDEO_HEIGHT - 134), text, font=f, fill=WHITE)
+    rounded_rect(d, (110, 1770, 970, 1840), 22, fill=DARK)
+    box = d.textbbox((0, 0), text, font=F(25, True))
+    d.text(((VIDEO_WIDTH - (box[2] - box[0])) / 2, 1790), text, font=F(25, True), fill=WHITE)
+
+
+def draw_highlight_words(d, text, y, highlight=None, max_width=900):
+    font = F(66, True)
+    lines = wrap_text(d, text, font, max_width)
+    yy = y
+    for line in lines:
+        parts = line.split()
+        widths = [d.textbbox((0, 0), p + " ", font=font)[2] for p in parts]
+        total = sum(widths)
+        x = (VIDEO_WIDTH - total) / 2
+        for p, w in zip(parts, widths):
+            fill = BLUE if highlight and highlight.lower() in p.lower() else DARK
+            d.text((x, yy), p + " ", font=font, fill=fill)
+            x += w
+        yy += 78
+    return yy
 
 
 def make_hook_slide(topic):
     img, d = make_slide_base()
     add_brand(d, topic["title"])
 
-    # Number marker.
-    rounded_rect(d, (75, 300, 205, 430), 34, fill=BLUE)
-    d.text((111, 340), "01", font=F(54, bold=True), fill=WHITE)
+    # Number badge.
+    rounded_rect(d, (110, 270, 260, 340), 25, fill=BLUE)
+    d.text((158, 294), "TIP", font=F(32, True), fill=WHITE)
 
-    hook_font = F(78, bold=True)
-    lines = wrap_text(d, topic["hook"], hook_font, 820)
-    y = 500
-    for line in lines:
-        w = text_width(d, line, hook_font)
-        d.text(((VIDEO_WIDTH - w) / 2, y), line, font=hook_font, fill=DARK)
-        y += 98
+    draw_highlight_words(d, random.choice(topic["hooks"]), 420, highlight="online")
 
-    # Practical mini-card.
-    rounded_rect(d, (120, 940, 960, 1390), 42, fill=WHITE, outline=(221, 227, 235, 255), width=3)
-    d.ellipse((180, 1035, 280, 1135), fill=PALE_BLUE)
-    d.text((210, 1045), "✓", font=F(52, bold=True), fill=BLUE)
-    d.text((320, 1020), "PRACTICAL, NOT HYPE", font=F(30, bold=True), fill=BLUE)
-    mini = "One clear idea • one useful action • realistic expectations"
-    for i, line in enumerate(wrap_text(d, mini, F(34), 560)):
-        d.text((320, 1080 + i * 52), line, font=F(34), fill=DARK)
+    rounded_rect(d, (150, 930, 930, 1390), 40, fill=WHITE, outline=(220, 227, 235, 255), width=3)
+    d.text((205, 990), "TODAY'S ANGLE", font=F(28, True), fill=BLUE)
+    add_centered_text(d, topic["caption"], 1070, F(43, True), DARK, 680, 10)
 
-    # Arrow.
-    d.line((540, 1450, 540, 1550), fill=BLUE, width=12)
-    d.polygon([(510, 1525), (570, 1525), (540, 1580)], fill=BLUE)
-
+    # Animated-looking arrow/line.
+    d.line((540, 1430, 540, 1515), fill=BLUE, width=8)
+    d.polygon([(515, 1495), (565, 1495), (540, 1530)], fill=BLUE)
     add_footer(d)
     return img
 
@@ -443,39 +419,27 @@ def make_hook_slide(topic):
 def make_step_slide(topic, step_index):
     img, d = make_slide_base()
     add_brand(d, topic["title"])
+    num, title, detail = topic["steps"][step_index]
 
-    num, heading, body = topic["steps"][step_index]
+    rounded_rect(d, (110, 285, 255, 430), 34, fill=BLUE)
+    d.text((158, 325), num, font=F(62, True), fill=WHITE)
 
-    # Big number.
-    rounded_rect(d, (76, 315, 240, 479), 44, fill=BLUE)
-    nw = text_width(d, num, F(70, bold=True))
-    d.text(((76 + 240 - nw) / 2, 345), num, font=F(70, bold=True), fill=WHITE)
+    d.text((295, 305), title, font=F(58, True), fill=DARK)
+    d.line((295, 385, 935, 385), fill=PALE_BLUE, width=8)
 
-    # Step heading.
-    heading_font = F(62, bold=True)
-    heading_lines = wrap_text(d, heading, heading_font, 700)
-    y = 350
-    for line in heading_lines:
-        d.text((285, y), line, font=heading_font, fill=DARK)
-        y += 78
+    # Practical visual card.
+    rounded_rect(d, (150, 550, 930, 1080), 40, fill=WHITE, outline=(220, 227, 235, 255), width=3)
+    d.text((205, 610), "PRACTICAL", font=F(27, True), fill=BLUE)
+    add_centered_text(d, detail, 700, F(44, True), DARK, 650, 12)
 
-    # Body card.
-    rounded_rect(d, (95, 650, 985, 1080), 45, fill=WHITE, outline=(220, 226, 234, 255), width=3)
-    body_font = F(40)
-    body_lines = wrap_text(d, body, body_font, 760)
-    y = 755
-    for line in body_lines:
-        d.text((160, y), line, font=body_font, fill=MUTED)
-        y += 58
-
-    # Check line.
-    d.ellipse((125, 1155, 215, 1245), fill=PALE_BLUE)
-    d.text((148, 1164), "✓", font=F(46, bold=True), fill=BLUE)
-    d.text((250, 1172), "Keep it simple and useful.", font=F(34, bold=True), fill=DARK)
-
-    # Decorative arrow.
-    d.line((810, 1280, 930, 1390), fill=BLUE, width=10)
-    d.polygon([(900, 1370), (945, 1405), (905, 1418)], fill=BLUE)
+    # Check marks.
+    for i, yy in enumerate((1120, 1215, 1310)):
+        if i <= step_index:
+            d.ellipse((175, yy, 225, yy + 50), fill=GREEN)
+            d.text((188, yy + 5), "✓", font=F(30, True), fill=WHITE)
+    d.text((255, 1120), "Useful", font=F(31, True), fill=MUTED)
+    d.text((255, 1215), "Practical", font=F(31, True), fill=MUTED)
+    d.text((255, 1310), "Original", font=F(31, True), fill=MUTED)
 
     add_footer(d)
     return img
@@ -484,49 +448,35 @@ def make_step_slide(topic, step_index):
 def make_end_slide(topic):
     img, d = make_slide_base()
     add_brand(d, topic["title"])
+    d.text((110, 350), "KEEP IT", font=F(70, True), fill=DARK)
+    d.text((110, 430), "PRACTICAL.", font=F(70, True), fill=BLUE)
 
-    # Main CTA card.
-    rounded_rect(d, (90, 390, 990, 1160), 52, fill=DARK)
+    rounded_rect(d, (110, 650, 970, 1220), 44, fill=DARK)
+    add_centered_text(
+        d,
+        "No guaranteed income. Test the idea, track the numbers, and improve from real results.",
+        760,
+        F(42, True),
+        WHITE,
+        700,
+        12,
+    )
 
-    d.text((155, 505), "THE TAKEAWAY", font=F(30, bold=True), fill=PALE_BLUE)
+    # Social CTA buttons.
+    for x, label in [(160, "LIKE"), (390, "SHARE"), (660, "FOLLOW")]:
+        rounded_rect(d, (x, 1370, x + 240, 1450), 24, fill=BLUE if label == "FOLLOW" else PALE_BLUE)
+        col = WHITE if label == "FOLLOW" else BLUE
+        box = d.textbbox((0, 0), label, font=F(27, True))
+        d.text((x + (240 - (box[2] - box[0])) / 2, 1393), label, font=F(27, True), fill=col)
 
-    takeaway = topic["caption"]
-    tf = F(60, bold=True)
-    lines = wrap_text(d, takeaway, tf, 730)
-    y = 600
-    for line in lines:
-        d.text((155, y), line, font=tf, fill=WHITE)
-        y += 82
-
-    # Blue CTA button.
-    button_text = "FOLLOW FOR MORE"
-    bf = F(32, bold=True)
-    bw = text_width(d, button_text, bf)
-    rounded_rect(d, ((VIDEO_WIDTH - bw) / 2 - 45, 1300,
-                     (VIDEO_WIDTH + bw) / 2 + 45, 1390),
-                 28, fill=BLUE)
-    d.text(((VIDEO_WIDTH - bw) / 2, 1322), button_text, font=bf, fill=WHITE)
-
-    # Disclaimer.
-    disclaimer = "Results vary. No income is guaranteed."
-    df = F(25)
-    dw = text_width(d, disclaimer, df)
-    d.text(((VIDEO_WIDTH - dw) / 2, 1480), disclaimer, font=df, fill=MUTED)
-
-    add_footer(d, "SAVE THIS TIP • FOLLOW FOR MORE")
+    add_footer(d, "SAVE THIS • FOLLOW FOR MORE")
     return img
 
 
 def create_scene_slides(topic, folder):
-    slides = []
-    slides.append(make_hook_slide(topic))
-
-    # Use two practical steps to keep the Short moving.
-    slides.append(make_step_slide(topic, 0))
-    slides.append(make_step_slide(topic, 1))
-    slides.append(make_step_slide(topic, 2))
+    slides = [make_hook_slide(topic)]
+    slides += [make_step_slide(topic, i) for i in range(3)]
     slides.append(make_end_slide(topic))
-
     paths = []
     for i, image in enumerate(slides, start=1):
         p = folder / f"slide_{i}.png"
@@ -538,14 +488,162 @@ def create_scene_slides(topic, folder):
 def clean_text_for_filename(s):
     return re.sub(r"[^a-zA-Z0-9_-]+", "_", s).strip("_")
 
+# ============================================================
+# YOUTUBE TREND DISCOVERY
+# ============================================================
+def youtube_get(path, params):
+    url = f"https://www.googleapis.com/youtube/v3/{path}"
+    params = dict(params)
+    params["key"] = YOUTUBE_API_KEY
+    r = requests.get(url, params=params, timeout=30)
+    r.raise_for_status()
+    return r.json()
+
+
+def classify_trend(text):
+    t = text.lower()
+    groups = [
+        ("ai", ["ai", "chatgpt", "artificial intelligence", "automation", "prompt"]),
+        ("affiliate", ["affiliate", "amazon associates", "commission"]),
+        ("tiktok", ["tiktok", "creator fund", "tiktok shop"]),
+        ("youtube", ["youtube", "shorts", "faceless channel", "youtube automation"]),
+        ("freelance", ["freelance", "fiverr", "upwork", "client", "freelancer"]),
+        ("digital", ["digital product", "template", "notion template", "ebook", "printable"]),
+        ("selling", ["ecommerce", "e-commerce", "shopify", "store", "dropshipping", "sell online"]),
+        ("remote", ["remote job", "remote work", "work from home", "wfh", "online job"]),
+        ("pod", ["print on demand", "pod", "merch", "t-shirt"]),
+        ("course", ["course", "teach online", "online teaching", "udemy"]),
+    ]
+    for key, words in groups:
+        if any(w in t for w in words):
+            return key
+    return "general"
+
+
+def discover_trending_topics():
+    """Return unique topic templates selected from recent YouTube interest."""
+    if not YOUTUBE_API_KEY:
+        print("YOUTUBE_API_KEY is missing. Falling back to built-in topics.")
+        return random.sample(list(TOPIC_TEMPLATES.values()), SHORT_COUNT)
+
+    published_after = (
+        datetime.now(timezone.utc) - timedelta(days=max(1, TREND_WINDOW_DAYS))
+    ).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    queries = random.sample(TREND_QUERIES, min(6, len(TREND_QUERIES)))
+    candidates = {}
+
+    for q in queries:
+        for order in ("viewCount", "date"):
+            try:
+                data = youtube_get(
+                    "search",
+                    {
+                        "part": "snippet",
+                        "q": q,
+                        "type": "video",
+                        "order": order,
+                        "publishedAfter": published_after,
+                        "maxResults": 8,
+                        "regionCode": YOUTUBE_REGION,
+                        "relevanceLanguage": "en",
+                        "safeSearch": "moderate",
+                    },
+                )
+            except Exception as exc:
+                print(f"YouTube search failed for '{q}' ({order}): {exc}")
+                continue
+
+            for item in data.get("items", []):
+                vid = item.get("id", {}).get("videoId")
+                snippet = item.get("snippet", {})
+                if not vid:
+                    continue
+                candidates[vid] = {
+                    "id": vid,
+                    "title": snippet.get("title", ""),
+                    "description": snippet.get("description", ""),
+                    "published": snippet.get("publishedAt", ""),
+                }
+
+    if not candidates:
+        print("No current YouTube candidates found. Falling back to built-in topics.")
+        return random.sample(list(TOPIC_TEMPLATES.values()), SHORT_COUNT)
+
+    ids = list(candidates.keys())[:50]
+    try:
+        stats = youtube_get(
+            "videos",
+            {
+                "part": "statistics,snippet,contentDetails",
+                "id": ",".join(ids),
+            },
+        )
+    except Exception as exc:
+        print("YouTube statistics lookup failed:", exc)
+        return random.sample(list(TOPIC_TEMPLATES.values()), SHORT_COUNT)
+
+    scored = []
+    now = datetime.now(timezone.utc)
+    for item in stats.get("items", []):
+        vid = item.get("id")
+        base = candidates.get(vid, {})
+        title = base.get("title", "")
+        try:
+            views = int(item.get("statistics", {}).get("viewCount", 0))
+        except Exception:
+            views = 0
+        published = item.get("snippet", {}).get("publishedAt") or base.get("published")
+        try:
+            dt = datetime.fromisoformat(published.replace("Z", "+00:00"))
+            age_hours = max(1.0, (now - dt).total_seconds() / 3600)
+        except Exception:
+            age_hours = float(TREND_WINDOW_DAYS * 24)
+
+        # Approximate momentum: recent views per hour, with a small engagement
+        # component. This is a trend signal, not a claim about YouTube's algorithm.
+        likes = int(item.get("statistics", {}).get("likeCount", 0) or 0)
+        comments = int(item.get("statistics", {}).get("commentCount", 0) or 0)
+        velocity = views / age_hours
+        engagement = (likes * 2 + comments * 5) / max(views, 1) * 100000
+        score = velocity + engagement
+        scored.append((score, title, views, age_hours))
+
+    scored.sort(reverse=True, key=lambda x: x[0])
+
+    selected = []
+    used_groups = set()
+    for score, title, views, age_hours in scored:
+        group = classify_trend(title)
+        if group in used_groups:
+            continue
+        template = TOPIC_TEMPLATES[group]
+        chosen = dict(template)
+        chosen["trend_source_title"] = title
+        chosen["trend_score"] = round(score, 2)
+        chosen["trend_views"] = views
+        chosen["trend_age_hours"] = round(age_hours, 1)
+        selected.append(chosen)
+        used_groups.add(group)
+        print(
+            f"TREND: {group} | {views:,} views | {age_hours:.1f}h | {title[:100]}"
+        )
+        if len(selected) == SHORT_COUNT:
+            break
+
+    if len(selected) < SHORT_COUNT:
+        remaining = [x for k, x in TOPIC_TEMPLATES.items() if k not in used_groups]
+        random.shuffle(remaining)
+        selected.extend(remaining[: SHORT_COUNT - len(selected)])
+
+    return selected[:SHORT_COUNT]
 
 # ============================================================
 # PEXELS
 # ============================================================
-
 def pexels_video(topic, destination):
     if not PEXELS_API_KEY:
-        print("PEXELS_API_KEY not set. Using generated graphic background.")
+        print("PEXELS_API_KEY not set. Using designed graphics only.")
         return None
 
     url = "https://api.pexels.com/v1/videos/search"
@@ -556,7 +654,6 @@ def pexels_video(topic, destination):
         "size": "medium",
         "per_page": 8,
     }
-
     try:
         r = requests.get(url, headers=headers, params=params, timeout=30)
         r.raise_for_status()
@@ -566,25 +663,16 @@ def pexels_video(topic, destination):
         return None
 
     videos = data.get("videos", [])
-    if not videos:
-        return None
-
     random.shuffle(videos)
-
     for video in videos:
         files = video.get("video_files", [])
-        files = sorted(
-            files,
-            key=lambda x: (
-                0 if x.get("width", 0) >= x.get("height", 0) else 1,
-                abs((x.get("height") or 1080) - 1920),
-            ),
-        )
+        portrait = [x for x in files if (x.get("height") or 0) >= (x.get("width") or 0)]
+        files = portrait or files
+        files = sorted(files, key=lambda x: abs((x.get("height") or 1080) - 1920))
         for vf in files:
             link = vf.get("link")
             if not link:
                 continue
-
             try:
                 rr = requests.get(link, timeout=60, stream=True)
                 rr.raise_for_status()
@@ -593,22 +681,17 @@ def pexels_video(topic, destination):
                         if chunk:
                             f.write(chunk)
                 if destination.exists() and destination.stat().st_size > 10000:
-                    print("Downloaded Pexels background:", destination)
                     return destination
             except Exception as exc:
                 print("Pexels download failed:", exc)
-
     return None
-
 
 # ============================================================
 # TTS
 # ============================================================
-
 async def tts_async(text, output_file):
     if edge_tts is None:
         raise RuntimeError("edge-tts is not installed. Add edge-tts to requirements.txt.")
-
     communicate = edge_tts.Communicate(
         text,
         VOICE,
@@ -634,91 +717,35 @@ def get_duration(media_file):
     )
     return float(result.stdout.strip())
 
-
 # ============================================================
 # VIDEO BUILD
 # ============================================================
-
-def make_silent_background(output_file, duration):
-    # Light background matching the reference design.
-    run([
-        "ffmpeg", "-y",
-        "-f", "lavfi",
-        "-i", f"color=c=0xF8FAFC:s={VIDEO_WIDTH}x{VIDEO_HEIGHT}:r={FPS}",
-        "-t", f"{duration:.3f}",
-        "-an",
-        "-c:v", "libx264",
-        "-preset", "veryfast",
-        "-crf", "23",
-        "-pix_fmt", "yuv420p",
-        output_file,
-    ])
-
-
 def make_scene_video(slide, voice, duration, output_file, pexels_bg=None):
-    """
-    Creates one scene. The designed slide is always on top.
-    A small moving Pexels strip can be used as a subtle practical visual.
-    """
     duration = max(1.8, duration)
-
     if pexels_bg and Path(pexels_bg).exists():
-        # Put the Pexels clip into a modest card behind the graphic.
-        # The card is intentionally not full-screen so the result feels edited,
-        # not like a generic stock-video Short.
         filter_complex = (
-            f"[0:v]scale=760:620:force_original_aspect_ratio=increase,"
-            f"crop=760:620,setsar=1,"
-            f"boxblur=1:1[bg];"
-            f"[bg]eq=brightness=-0.02:saturation=0.82[bg2];"
-            f"[bg2]format=rgba,colorchannelmixer=aa=0.26[bg3];"
-            f"[1:v]format=rgba,"
-            f"fade=t=in:st=0:d=0.35:alpha=1,"
-            f"fade=t=out:st={max(0.4, duration-0.35):.3f}:d=0.35:alpha=1[slide];"
-            f"[bg3][slide]overlay=160:980:format=auto,"
-            f"format=yuv420p[v]"
+            f"[0:v]scale=760:620:force_original_aspect_ratio=increase,crop=760:620,"
+            f"setsar=1,boxblur=1:1,eq=brightness=-0.02:saturation=0.82[bg];"
+            f"[1:v]format=rgba,fade=t=in:st=0:d=0.35:alpha=1,"
+            f"fade=t=out:st={max(0.4,duration-0.35):.3f}:d=0.35:alpha=1[slide];"
+            f"[bg]format=rgba,colorchannelmixer=aa=0.28[bg2];"
+            f"[bg2][slide]overlay=160:980:format=auto,format=yuv420p[v]"
         )
-
-        # The slide itself has a solid background, so the subtle Pexels layer
-        # is mainly visible in the designed card area through its alpha.
         run([
-            "ffmpeg", "-y",
-            "-stream_loop", "-1", "-i", pexels_bg,
-            "-loop", "1", "-i", slide,
-            "-i", voice,
-            "-t", f"{duration:.3f}",
-            "-filter_complex", filter_complex,
-            "-map", "[v]",
-            "-map", "2:a:0",
-            "-c:v", "libx264",
-            "-preset", "veryfast",
-            "-crf", "24",
-            "-c:a", "aac",
-            "-b:a", "128k",
-            "-shortest",
-            output_file,
+            "ffmpeg", "-y", "-stream_loop", "-1", "-i", pexels_bg,
+            "-loop", "1", "-i", slide, "-i", voice,
+            "-t", f"{duration:.3f}", "-filter_complex", filter_complex,
+            "-map", "[v]", "-map", "2:a:0", "-c:v", "libx264",
+            "-preset", "veryfast", "-crf", "24", "-c:a", "aac",
+            "-b:a", "128k", "-shortest", output_file,
         ])
     else:
-        filter_complex = (
-            f"[0:v]format=rgba,"
-            f"fade=t=in:st=0:d=0.35:alpha=1,"
-            f"fade=t=out:st={max(0.4, duration-0.35):.3f}:d=0.35:alpha=1[slide]"
-        )
         run([
-            "ffmpeg", "-y",
-            "-loop", "1", "-i", slide,
-            "-i", voice,
-            "-t", f"{duration:.3f}",
-            "-filter_complex", filter_complex,
-            "-map", "[slide]",
-            "-map", "1:a:0",
-            "-c:v", "libx264",
-            "-preset", "veryfast",
-            "-crf", "24",
-            "-c:a", "aac",
-            "-b:a", "128k",
-            "-shortest",
-            output_file,
+            "ffmpeg", "-y", "-loop", "1", "-i", slide, "-i", voice,
+            "-t", f"{duration:.3f}", "-vf", "format=yuv420p",
+            "-map", "0:v:0", "-map", "1:a:0", "-c:v", "libx264",
+            "-preset", "veryfast", "-crf", "24", "-c:a", "aac",
+            "-b:a", "128k", "-shortest", output_file,
         ])
 
 
@@ -727,31 +754,18 @@ def concat_scenes(scene_files, output_file):
     with open(list_file, "w", encoding="utf-8") as f:
         for p in scene_files:
             f.write(f"file '{Path(p).resolve()}'\n")
-
     run([
-        "ffmpeg", "-y",
-        "-f", "concat",
-        "-safe", "0",
-        "-i", list_file,
-        "-c:v", "libx264",
-        "-preset", "veryfast",
-        "-crf", "23",
-        "-c:a", "aac",
-        "-b:a", "128k",
-        "-movflags", "+faststart",
-        output_file,
+        "ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", list_file,
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+        "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", output_file,
     ])
 
-
 # ============================================================
-# SCRIPT / TIMING
+# SCRIPT / METADATA
 # ============================================================
-
 def split_script_into_scene_text(topic):
-    # The narration is deliberately divided into natural chunks.
-    # This is not word-by-word captioning; the graphic cards carry the key points.
     return [
-        topic["hook"],
+        random.choice(topic["hooks"]),
         topic["steps"][0][2],
         topic["steps"][1][2],
         topic["steps"][2][2],
@@ -760,157 +774,108 @@ def split_script_into_scene_text(topic):
 
 
 def fit_scene_duration(voice_duration):
-    # Give the voice a little breathing room, but keep the video short.
     return max(1.9, min(7.0, voice_duration + 0.35))
 
 
 def write_metadata(topic, output_file, total_duration):
-    title = f"{topic['title']}: a practical online earning tip #shorts"
-
+    title = f"{topic['title']}: practical online earning tip #shorts"
+    trend = topic.get("trend_source_title", "")
     description = (
-        f"{topic['title']} explained simply. "
-        f"This Short focuses on practical steps rather than unrealistic income promises.\n\n"
-        "Results vary depending on skills, effort, market, location and eligibility. "
-        "No income is guaranteed.\n\n"
+        f"A practical {topic['title']} tip explained simply.\n\n"
+        "This video was created from current topic-interest signals and uses original narration. "
+        "It does not copy another creator's script.\n\n"
+        "Results vary by skill, effort, market, location and eligibility. No income is guaranteed.\n\n"
         "#shorts #onlineearning #sidehustle #makemoneyonline "
         f"#{clean_text_for_filename(topic['key'])}"
     )
-
     tags = [
-        "online earning",
-        "make money online",
-        "side hustle",
-        "online business",
-        "earning online",
-        "digital income",
-        "freelancing",
-        "online work",
-        "shorts",
-        topic["key"],
+        "online earning", "make money online", "side hustle", "online business",
+        "earning online", "digital income", "freelancing", "online work",
+        "money tips", "shorts", topic["key"],
     ]
-
     meta = {
         "title": title,
         "description": description,
         "tags": tags,
         "topic": topic["title"],
         "duration_seconds": round(total_duration, 2),
-        "note": "Educational content. Results vary; no income guaranteed.",
+        "voice": VOICE,
+        "trend_source_title": trend,
+        "trend_views": topic.get("trend_views"),
+        "trend_age_hours": topic.get("trend_age_hours"),
+        "note": "Trend-inspired original educational content. Results vary; no income guaranteed.",
     }
-
-    meta_file = output_file.with_suffix(".txt")
-    meta_file.write_text(json.dumps(meta, indent=2), encoding="utf-8")
-
+    output_file.with_suffix(".txt").write_text(json.dumps(meta, indent=2), encoding="utf-8")
 
 # ============================================================
 # ONE SHORT
 # ============================================================
-
 def create_short(topic, number):
     folder = WORK_DIR / f"video_{number}"
+    if folder.exists():
+        shutil.rmtree(folder)
     folder.mkdir(parents=True, exist_ok=True)
 
-    print("\n" + "=" * 70)
-    print(f"CREATING VIDEO {number}: {topic['title']}")
-    print("=" * 70)
-
     slides = create_scene_slides(topic, folder)
-    scene_texts = split_script_into_scene_text(topic)
-
+    texts = split_script_into_scene_text(topic)
     scene_files = []
 
-    for i, (slide, text) in enumerate(zip(slides, scene_texts), start=1):
+    bg_file = folder / "pexels.mp4"
+    pexels_video(topic, bg_file)
+    bg = bg_file if bg_file.exists() else None
+
+    for i, (slide, text) in enumerate(zip(slides, texts), start=1):
         voice_file = folder / f"voice_{i}.mp3"
         scene_file = folder / f"scene_{i}.mp4"
-
-        print(f"Scene {i}: {text}")
         make_voice(text, voice_file)
-
         voice_duration = get_duration(voice_file)
         scene_duration = fit_scene_duration(voice_duration)
-
-        if scene_duration < MIN_SECONDS and i == len(slides):
-            scene_duration = MIN_SECONDS
-
-        bg_file = folder / "pexels.mp4"
-        if i == 1 and not bg_file.exists():
-            pexels_video(topic, bg_file)
-
-        bg = bg_file if bg_file.exists() else None
-
-        make_scene_video(
-            slide,
-            voice_file,
-            scene_duration,
-            scene_file,
-            pexels_bg=bg,
-        )
+        make_scene_video(slide, voice_file, scene_duration, scene_file, pexels_bg=bg)
         scene_files.append(scene_file)
 
-    temp_final = folder / "joined.mp4"
-    concat_scenes(scene_files, temp_final)
+    joined = folder / "joined.mp4"
+    concat_scenes(scene_files, joined)
+    duration = get_duration(joined)
 
-    duration = get_duration(temp_final)
-
-    # If a rare long voiceover pushes it beyond the maximum, speed the audio/video
-    # slightly. This preserves the complete narration better than hard-cutting it.
+    # Keep the finished reel within the requested flexible range.
     if duration > MAX_SECONDS:
         factor = duration / MAX_SECONDS
         corrected = folder / "corrected.mp4"
-        atempo = min(2.0, max(0.5, factor))
         run([
-            "ffmpeg", "-y",
-            "-i", temp_final,
-            "-filter_complex",
-            f"[0:v]setpts=PTS/{factor}[v];[0:a]atempo={atempo}[a]",
-            "-map", "[v]",
-            "-map", "[a]",
-            "-c:v", "libx264",
-            "-preset", "veryfast",
-            "-crf", "23",
-            "-c:a", "aac",
-            "-b:a", "128k",
-            "-movflags", "+faststart",
-            corrected,
+            "ffmpeg", "-y", "-i", joined,
+            "-filter_complex", f"[0:v]setpts=PTS/{factor}[v];[0:a]atempo={min(2.0,max(0.5,factor))}[a]",
+            "-map", "[v]", "-map", "[a]", "-c:v", "libx264", "-preset", "veryfast",
+            "-crf", "23", "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", corrected,
         ])
-        shutil.copy2(corrected, temp_final)
-        duration = get_duration(temp_final)
+        shutil.copy2(corrected, joined)
+        duration = get_duration(joined)
 
     output_file = OUTPUT_DIR / f"online_earning_short_{number}.mp4"
-    shutil.copy2(temp_final, output_file)
-
+    shutil.copy2(joined, output_file)
     write_metadata(topic, output_file, duration)
-
-    print(f"Created: {output_file}")
-    print(f"Duration: {duration:.2f} seconds")
+    print(f"CREATED: {output_file} | {duration:.1f}s | {topic['title']}")
     return output_file
-
 
 # ============================================================
 # MAIN
 # ============================================================
-
 def main():
     require_program("ffmpeg")
     require_program("ffprobe")
-
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     WORK_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Remove old generated videos from this run so the uploader does not
-    # accidentally pick up stale files.
+    # Remove only this generator's previous outputs so the uploader does not
+    # accidentally pick up yesterday's generated files.
     for p in OUTPUT_DIR.glob("online_earning_short_*.mp4"):
         p.unlink(missing_ok=True)
     for p in OUTPUT_DIR.glob("online_earning_short_*.txt"):
         p.unlink(missing_ok=True)
 
-    if not REGULAR_FONT.exists() or not BOLD_FONT.exists():
-        print("WARNING: NotoSans fonts are missing from fonts/.")
-        print("Expected:")
-        print("  fonts/NotoSans-Regular.ttf")
-        print("  fonts/NotoSans-Bold.ttf")
-
-    selected = random.sample(TOPICS, SHORT_COUNT)
+    selected = discover_trending_topics()
+    print("\nSELECTED DAILY TOPICS:")
+    for i, topic in enumerate(selected, 1):
+        print(f"  {i}. {topic['title']} | trend: {topic.get('trend_source_title', 'fallback')}")
 
     created = []
     for number, topic in enumerate(selected, start=1):
@@ -922,7 +887,6 @@ def main():
     print("\n" + "=" * 70)
     print(f"FINISHED: {len(created)}/{SHORT_COUNT} videos")
     print("=" * 70)
-
     for p in created:
         print(p)
 
