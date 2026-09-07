@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ONLINE EARNING SHORTS GENERATOR V5.1
+ONLINE EARNING SHORTS GENERATOR V6
 
 Main improvements:
 - One continuous Edge-TTS narration per Short (no chopped voice between slides).
@@ -56,7 +56,7 @@ TREND_WINDOW_DAYS = int(os.getenv("TREND_WINDOW_DAYS", "7"))
 
 ROOT = Path(__file__).resolve().parent
 OUTPUT_DIR = ROOT / "output"
-WORK_DIR = ROOT / "_work_reference_style_v4"
+WORK_DIR = ROOT / "_work_reference_style_v6"
 FONTS_DIR = ROOT / "fonts"
 
 REGULAR_FONT = FONTS_DIR / "NotoSans-Regular.ttf"
@@ -859,7 +859,7 @@ def build_caption_video(folder, sentence_data, total_duration, word_boundaries=N
         "ffmpeg", "-y",
         "-f", "concat", "-safe", "0", "-i", timeline,
         "-t", f"{total_duration:.3f}",
-        "-vf", f"scale={W}:{H}:flags=lanczos,format=rgba",
+        "-vf", f"scale={W}:{H}:flags=lanczos,fps={FPS},format=rgba",
         "-c:v", "qtrle",
         "-pix_fmt", "argb",
         caption_video
@@ -959,7 +959,9 @@ def build_visual_timeline(sentence_data, folder, total_duration):
         offset = max(0.0, current_duration - TRANSITION)
 
         filter_complex = (
-            f"[0:v][1:v]xfade=transition=smoothleft:"
+            f"[0:v]settb=AVTB,setpts=PTS-STARTPTS,fps={FPS}[a];"
+            f"[1:v]settb=AVTB,setpts=PTS-STARTPTS,fps={FPS}[b];"
+            f"[a][b]xfade=transition=smoothleft:"
             f"duration={TRANSITION}:offset={offset:.3f},"
             "format=yuv420p[v]"
         )
@@ -996,52 +998,6 @@ def build_visual_timeline(sentence_data, folder, total_duration):
 # ------------------------------------------------------------
 # CAPTION VIDEO
 # ------------------------------------------------------------
-def build_caption_video(folder, sentence_data, total_duration):
-    """
-    Build a transparent caption video. Frames update at word timings.
-    """
-    paths, final_path = make_caption_frames(
-        folder, sentence_data, total_duration
-    )
-
-    # If there are many frames, create a concat timeline with each state.
-    timeline = folder / "caption_timeline.txt"
-
-    events = []
-    for i, (t, p) in enumerate(paths):
-        next_t = (
-            paths[i + 1][0]
-            if i + 1 < len(paths)
-            else total_duration
-        )
-        dur = max(0.04, next_t - t)
-        events.append((p, dur))
-
-    # Add final state after the last word until narration ends.
-    if paths:
-        last_t = paths[-1][0]
-        if last_t < total_duration:
-            events[-1] = (events[-1][0], max(events[-1][1], total_duration-last_t))
-    else:
-        events = [(final_path, total_duration)]
-
-    with open(timeline, "w", encoding="utf-8") as f:
-        for p, dur in events:
-            f.write(f"file '{Path(p).resolve()}'\n")
-            f.write(f"duration {dur:.4f}\n")
-        f.write(f"file '{Path(events[-1][0]).resolve()}'\n")
-
-    caption_video = folder / "captions.mov"
-    run([
-        "ffmpeg", "-y",
-        "-f", "concat", "-safe", "0", "-i", timeline,
-        "-t", f"{total_duration:.3f}",
-        "-vf", f"scale={W}:{H}:flags=lanczos,format=rgba",
-        "-c:v", "qtrle",
-        "-pix_fmt", "argb",
-        caption_video
-    ])
-    return caption_video
 
 # ------------------------------------------------------------
 # FINAL VIDEO
@@ -1260,12 +1216,20 @@ def main():
         try:
             made.append(create_short(topic, i))
         except Exception as exc:
+            import traceback
             print(f"ERROR video {i}: {exc}")
+            traceback.print_exc()
 
     print("\n" + "=" * 70)
     print(f"FINISHED: {len(made)}/{SHORT_COUNT}")
     for p in made:
         print(p)
+
+    if len(made) != SHORT_COUNT:
+        raise RuntimeError(
+            f"Only {len(made)}/{SHORT_COUNT} Shorts were created. "
+            "See the detailed error above."
+        )
 
 if __name__ == "__main__":
     main()
