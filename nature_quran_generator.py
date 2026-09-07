@@ -6,9 +6,9 @@ Built from the user's existing professional generator, but redesigned around the
 uploaded reference video's editing language:
 - Portrait 1080x1920 Shorts.
 - Full-screen visual footage is the hero; no giant opaque cards covering it.
-- Very fast visual changes and short spoken beats.
-- Large bold white caption words at the bottom with strong shadow/stroke.
-- Small supporting caption above the main word when useful.
+- Very fast visual changes, with a fresh slide approximately every 1–2 seconds.
+- Large bold white captions show the exact words being spoken.
+- No extra labels, progress bars, pills, support text or unrelated frame text.
 - Matching visuals for the exact spoken idea (money, TikTok, laptop, AI, etc.).
 - Subtle punch-in / movement, dark vignette, and quick transitions.
 - Duration is natural: no forced filler. Usually 10–35 seconds depending on script.
@@ -46,11 +46,12 @@ except ImportError:
 W, H, FPS = 1080, 1920, 30
 SHORT_COUNT = 3
 MAX_SECONDS = 35
-MIN_BEAT_SECONDS = 0.72
-MAX_BEAT_SECONDS = 3.20
+MIN_BEAT_SECONDS = 0.85
+MAX_BEAT_SECONDS = 2.05
+TARGET_BEAT_SECONDS = 1.65
 
 VOICE = "en-US-EricNeural"
-VOICE_RATE = "+8%"
+VOICE_RATE = "+14%"
 VOICE_PITCH = "+3Hz"
 
 PEXELS_API_KEY = os.getenv("PEXELS_API_KEY", "").strip()
@@ -483,90 +484,47 @@ def media_duration(path):
     return float(r.stdout.strip())
 
 # ============================================================
-# REFERENCE-STYLE GRAPHICS
+# CLEAN REFERENCE-STYLE GRAPHICS
 # ============================================================
-def base_overlay(topic, label, main_words, subtext, progress):
-    """Transparent overlay: footage remains visible everywhere except a subtle caption zone."""
+def caption_overlay(text):
+    """Minimal caption-only overlay. No extra labels, title cards, progress bars or clutter."""
     img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
 
-    # Top micro-label. Minimal, not a title card.
-    d.rounded_rectangle((48, 54, 310, 104), 25, fill=(0, 0, 0, 125), outline=(255,255,255,55), width=2)
-    d.text((72, 65), "EARN SMART", font=F(24, True), fill=WHITE)
-
-    # Thin progress line like a modern short-form edit.
-    d.rounded_rectangle((48, 122, 1032, 128), 3, fill=(255,255,255,65))
-    d.rounded_rectangle((48, 122, 48 + int(984 * progress), 128), 3, fill=WHITE)
-
-    # Soft bottom gradient/panel. Keeps the actual visual visible.
-    panel = Image.new("RGBA", (W, H), (0,0,0,0))
+    # Very soft bottom readability gradient. The footage remains the hero.
+    panel = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     pd = ImageDraw.Draw(panel)
-    for i in range(620):
-        alpha = int(150 * (i / 620) ** 1.7)
-        y = H - 620 + i
-        pd.line((0, y, W, y), fill=(0,0,0,alpha))
+    for i in range(430):
+        alpha = int(115 * (i / 430) ** 2.0)
+        y = H - 430 + i
+        pd.line((0, y, W, y), fill=(0, 0, 0, alpha))
     img.alpha_composite(panel)
     d = ImageDraw.Draw(img)
 
-    # Small contextual label.
-    d.text((70, H - 565), label.upper(), font=F(28, True), fill=ACCENT,
-           stroke_width=2, stroke_fill=(0,0,0,220))
+    # The on-screen text is the exact words spoken in this scene.
+    # Keep it to 1–2 lines and visually centered near the lower third.
+    text = re.sub(r"\s+", " ", text).strip()
+    font = F(78 if len(text) <= 24 else 66 if len(text) <= 42 else 54, True)
+    lines = wrap(d, text.upper(), font, 930, stroke=4)
+    lines = lines[:2]
 
-    # Main reference-like bold caption. It can be one word or a short phrase.
-    font = F(86 if len(main_words) <= 11 else 68, True)
-    lines = wrap(d, main_words.upper(), font, 940, stroke=5)
-    y = H - 475
-    for line in lines[-2:]:
+    total_h = len(lines) * (font.size + 10)
+    y = H - 250 - total_h / 2
+    for line in lines:
         tw = text_width(d, line, font, stroke=5)
         x = (W - tw) / 2
-        d.text((x + 4, y + 6), line, font=font, fill=(0,0,0,235),
-               stroke_width=9, stroke_fill=(0,0,0,220))
+        # Strong shadow/stroke for readability without an opaque text box.
+        d.text((x + 4, y + 6), line, font=font, fill=(0, 0, 0, 235),
+               stroke_width=10, stroke_fill=(0, 0, 0, 220))
         d.text((x, y), line, font=font, fill=WHITE,
-               stroke_width=5, stroke_fill=(0,0,0,255))
-        y += font.size + 8
+               stroke_width=5, stroke_fill=(0, 0, 0, 255))
+        y += font.size + 10
 
-    # Short support line.
-    support_font = F(31, False)
-    sub_lines = wrap(d, subtext, support_font, 900, stroke=2)[:2]
-    yy = H - 210
-    for line in sub_lines:
-        tw = text_width(d, line, support_font, stroke=2)
-        d.text(((W-tw)/2, yy), line, font=support_font, fill=MUTED,
-                stroke_width=2, stroke_fill=(0,0,0,220))
-        yy += 40
-
-    # Tiny beat marker.
-    d.ellipse((48, H-68, 64, H-52), fill=GREEN)
-    d.text((78, H-82), f"{topic['title']}  •  {int(progress*100)}%", font=F(22, True), fill=WHITE,
-           stroke_width=1, stroke_fill=(0,0,0,180))
     return img
 
 
-def render_overlay(topic, beat, beat_index, total):
-    label, detail, _ = beat
-    return base_overlay(topic, label, label, detail, beat_index / max(1, total))
-
-
-def render_hook_overlay(topic, total):
-    # Hook gets an even bigger caption and no clutter.
-    img = Image.new("RGBA", (W, H), (0,0,0,0))
-    d = ImageDraw.Draw(img)
-    d.rounded_rectangle((48,54,310,104),25,fill=(0,0,0,125),outline=(255,255,255,55),width=2)
-    d.text((72,65), "EARN SMART", font=F(24,True), fill=WHITE)
-    d.rounded_rectangle((48,122,1032,128),3,fill=(255,255,255,65))
-    d.rounded_rectangle((48,122,48+int(984/total),128),3,fill=WHITE)
-
-    # Strong centered hook, with a dark readability area but still transparent.
-    d.rounded_rectangle((54, H-880, W-54, H-330), 34, fill=(0,0,0,120), outline=(255,255,255,40), width=2)
-    lines = wrap(d, topic["hook"].upper(), F(86,True), 900, stroke=5)
-    y = H-810
-    for line in lines[:4]:
-        tw = text_width(d,line,F(86,True),stroke=5)
-        d.text(((W-tw)/2,y),line,font=F(86,True),fill=WHITE,stroke_width=5,stroke_fill=(0,0,0,255))
-        y += 100
-    d.text((75,H-275), "WATCH • LEARN • APPLY", font=F(27,True), fill=ACCENT,
-           stroke_width=2,stroke_fill=(0,0,0,220))
-    return img
+def render_overlay(text):
+    return caption_overlay(text)
 
 # ============================================================
 # VIDEO PREPARATION
@@ -598,14 +556,14 @@ def prepare_visual_clip(path, out, duration, variant=0):
 def make_scene_video(card, visual, voice, duration, out, beat_index=0):
     # Quick fade in/out on the transparent overlay + visual; the footage stays dominant.
     card_png = str(card)
-    fade_out = max(0.18, duration - 0.18)
+    fade_out = max(0.12, duration - 0.12)
     if visual and Path(visual).exists():
         fc = (
             "[0:v]format=yuv420p,"
-            f"fade=t=in:st=0:d=0.10,fade=t=out:st={fade_out:.3f}:d=0.16[v0];"
+            f"fade=t=in:st=0:d=0.06,fade=t=out:st={fade_out:.3f}:d=0.08[v0];"
             "[1:v]format=rgba,"
-            "fade=t=in:st=0:d=0.10:alpha=1,"
-            f"fade=t=out:st={fade_out:.3f}:d=0.16:alpha=1[ov];"
+            "fade=t=in:st=0:d=0.05:alpha=1,"
+            f"fade=t=out:st={fade_out:.3f}:d=0.08:alpha=1[ov];"
             "[v0][ov]overlay=0:0:format=auto,format=yuv420p[v]"
         )
         run(["ffmpeg","-y","-i",visual,"-loop","1","-i",card_png,"-i",voice,
@@ -640,35 +598,66 @@ def add_music(video, out, duration, folder):
          "-b:a","128k","-movflags","+faststart",out])
 
 # ============================================================
-# BEAT CREATION
+# BEAT / CAPTION CREATION
 # ============================================================
-def hook_beats(topic):
-    """Split the hook into a few natural spoken chunks so visuals can change quickly."""
-    h = topic["hook"].replace("—", ",").replace(".", "")
-    parts = [x.strip() for x in re.split(r",|;|\band\b", h, flags=re.I) if x.strip()]
-    if len(parts) < 2:
-        words = h.split()
-        mid = max(3, len(words)//2)
-        parts = [" ".join(words[:mid]), " ".join(words[mid:])]
-    return parts[:3]
+def split_text_into_fast_beats(text, target_seconds=TARGET_BEAT_SECONDS):
+    """Split spoken copy into short, natural phrases so the slide and voice stay locked."""
+    text = re.sub(r"\s+", " ", text).strip()
+    if not text:
+        return []
+
+    # First respect natural punctuation.
+    phrases = [p.strip() for p in re.split(r"(?<=[.!?])\s+|(?<=[,;:])\s+", text) if p.strip()]
+    chunks = []
+    max_words = 8  # with the faster male voice, this keeps most slides under ~2 sec
+
+    for phrase in phrases:
+        words = phrase.split()
+        while len(words) > max_words:
+            # Prefer a natural break around the middle rather than chopping randomly.
+            cut = max_words
+            for candidate in range(min(max_words, len(words)-1), max(3, min(max_words, len(words)-1)-3), -1):
+                if words[candidate-1].lower().rstrip(',.!?;:') in {
+                    "the", "a", "an", "to", "and", "for", "your", "one", "with", "when"
+                }:
+                    continue
+                cut = candidate
+                break
+            part = " ".join(words[:cut]).strip()
+            if part:
+                chunks.append(part)
+            words = words[cut:]
+        if words:
+            chunks.append(" ".join(words))
+
+    return chunks
 
 
 def build_beats(topic):
     beats = []
-    hook_parts = hook_beats(topic)
-    for i, text in enumerate(hook_parts):
+
+    # Hook is spoken exactly as shown on screen. Split it so the visual changes fast.
+    for text in split_text_into_fast_beats(topic["hook"]):
         beats.append({
-            "kind": "hook", "speech": text + ("." if not text.endswith(".") else ""),
-            "label": "HOOK", "caption": text, "detail": "Stay for the practical steps.",
+            "kind": "hook", "speech": text, "caption": text,
             "query": topic["visual_hook"],
         })
+
+    # Each step is spoken as a complete sentence. The caption is the exact same text.
     for label, detail, query in topic["beats"]:
-        speech = f"{label.title().replace(' ', ' ')}: {detail}."
-        # Main caption is the exact action phrase, not an unrelated headline.
-        beats.append({"kind":"step","speech":speech,"label":label,"caption":label,
-                      "detail":detail,"query":query})
-    beats.append({"kind":"cta","speech":topic["cta"],"label":"NEXT STEP","caption":"SAVE THIS",
-                  "detail":topic["cta"],"query":topic["visual_hook"]})
+        speech = f"{label.title()}. {detail}."
+        for text in split_text_into_fast_beats(speech):
+            beats.append({
+                "kind": "step", "speech": text, "caption": text,
+                "query": query,
+            })
+
+    # CTA is also exact transcript text, with no extra "SAVE THIS" label.
+    for text in split_text_into_fast_beats(topic["cta"]):
+        beats.append({
+            "kind": "cta", "speech": text, "caption": text,
+            "query": topic["visual_hook"],
+        })
     return beats
 
 # ============================================================
@@ -697,8 +686,8 @@ def write_metadata(topic, output_file, duration):
         "trend_source_title": topic.get("trend_source_title"),
         "trend_views": topic.get("trend_views"), "trend_age_hours": topic.get("trend_age_hours"),
         "trend_score": topic.get("trend_score"), "original_content": True,
-        "reference_style": "fast-cut portrait footage + bold bottom captions",
-        "note": "Trend-inspired original educational Short; no income is guaranteed.",
+        "reference_style": "fast-cut portrait footage + exact spoken captions + fresh visual every 1–2 seconds",
+        "note": "Trend-inspired original educational Short; captions are synchronized to the narration and visuals refresh every 1–2 seconds.",
     }
     output_file.with_suffix(".txt").write_text(json.dumps(data, indent=2), encoding="utf-8")
 
@@ -714,63 +703,60 @@ def create_short(topic, number):
     beats = build_beats(topic)
     total = len(beats)
     scene_files = []
-    media_cache = {}
 
-    # Search/download one visual for every conceptual beat. Queries are exact to the spoken idea.
+    # Each caption/voice beat gets its own visual. This prevents missing slides and
+    # makes the edit change approximately every 1–2 seconds.
     for i, beat in enumerate(beats, start=1):
-        q = beat["query"]
-        # Reuse hook visual only for CTA to reduce API load.
-        if q in media_cache:
-            media = media_cache[q]
-        else:
-            media = get_visual(q, folder, i)
-            media_cache[q] = media
+        voice_path = folder / f"voice_{i}.mp3"
+        make_voice(beat["speech"], voice_path)
+        vd = media_duration(voice_path)
+        duration = max(MIN_BEAT_SECONDS, min(MAX_BEAT_SECONDS, vd + 0.02))
+        beat["duration"] = duration
+
+        # Fresh, topic-specific footage for every spoken beat.
+        modifiers = [
+            "cinematic", "close up", "real person", "hands", "smartphone",
+            "screen", "workspace", "business", "vertical video", "action"
+        ]
+        modifier = modifiers[(i - 1) % len(modifiers)]
+        visual_query = f"{beat['query']} {modifier}"
+        media = get_visual(visual_query, folder, i)
         beat["media"] = media
 
+    # Build each scene after its exact voice duration is known.
     for i, beat in enumerate(beats, start=1):
         card_path = folder / f"overlay_{i}.png"
-        voice_path = folder / f"voice_{i}.mp3"
         prepared_path = folder / f"prepared_{i}.mp4"
         scene_path = folder / f"scene_{i}.mp4"
 
-        make_voice(beat["speech"], voice_path)
-        vd = media_duration(voice_path)
-        duration = max(MIN_BEAT_SECONDS, min(MAX_BEAT_SECONDS, vd + 0.06))
-
-        if beat["kind"] == "hook":
-            # First hook beat gets the large reference-style opener; later hook beats use normal captions.
-            if i == 1:
-                overlay = render_hook_overlay(topic, total)
-            else:
-                fake = (beat["label"], beat["detail"], beat["query"])
-                overlay = render_overlay(topic, fake, i, total)
-        elif beat["kind"] == "step":
-            fake = (beat["label"], beat["detail"], beat["query"])
-            overlay = render_overlay(topic, fake, i, total)
-        else:
-            fake = (beat["label"], beat["detail"], beat["query"])
-            overlay = render_overlay(topic, fake, i, total)
-
+        overlay = render_overlay(beat["caption"])
         overlay.save(card_path, "PNG")
+
         prepared = None
         if beat.get("media"):
-            prepared = prepare_visual_clip(beat["media"], prepared_path, duration, variant=i)
-        make_scene_video(card_path, prepared, voice_path, duration, scene_path, i)
+            prepared = prepare_visual_clip(
+                beat["media"], prepared_path, beat["duration"], variant=i
+            )
+        make_scene_video(
+            card_path, prepared, folder / f"voice_{i}.mp3",
+            beat["duration"], scene_path, i
+        )
         scene_files.append(scene_path)
 
     joined = folder / "joined.mp4"
     concat_videos(scene_files, joined)
     duration = media_duration(joined)
 
-    # Keep natural duration, but prevent an accidental long result.
+    # Natural duration; if a topic somehow becomes too long, speed it up rather than
+    # deleting the synchronized caption/voice beats.
     if duration > MAX_SECONDS:
         factor = duration / MAX_SECONDS
         fixed = folder / "fixed.mp4"
         atempo = max(0.5, min(2.0, factor))
-        run(["ffmpeg","-y","-i",joined,
-             "-filter_complex",f"[0:v]setpts=PTS/{factor}[v];[0:a]atempo={atempo}[a]",
-             "-map","[v]","-map","[a]","-c:v","libx264","-preset","veryfast","-crf","23",
-             "-c:a","aac","-b:a","128k","-movflags","+faststart",fixed])
+        run(["ffmpeg", "-y", "-i", joined,
+             "-filter_complex", f"[0:v]setpts=PTS/{factor}[v];[0:a]atempo={atempo}[a]",
+             "-map", "[v]", "-map", "[a]", "-c:v", "libx264", "-preset", "veryfast",
+             "-crf", "23", "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", fixed])
         shutil.copy2(fixed, joined)
         duration = media_duration(joined)
 
@@ -780,7 +766,7 @@ def create_short(topic, number):
     output = OUTPUT_DIR / f"online_earning_short_{number}.mp4"
     shutil.copy2(final, output)
     write_metadata(topic, output, duration)
-    print(f"CREATED: {output} | {duration:.1f}s | {topic['title']} | {total} beats")
+    print(f"CREATED: {output} | {duration:.1f}s | {topic['title']} | {total} synced beats")
     return output
 
 # ============================================================
