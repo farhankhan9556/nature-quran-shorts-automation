@@ -1,141 +1,28 @@
-[
-  {
-    "id": "facebook",
-    "name": "Facebook Content Monetization",
-    "website": "https://www.facebook.com/",
-    "signup_url": "https://www.facebook.com/",
-    "official_source": "https://about.fb.com/news/2026/03/creator-fast-track-grow-your-audience-earn-money-on-facebook/",
-    "category": "Facebook",
-    "target": "$500/month",
-    "hook": "Want to build toward 500 dollars a month with Facebook? Let me show you the process from account setup to monetization.",
-    "verification_note": "Facebook may require email or phone verification. Use the code Facebook sends to your own email or phone.",
-    "earning_steps": [
-      "Open your Facebook account.",
-      "Set up your creator or professional presence where available.",
-      "Open the Professional Dashboard.",
-      "Open Monetization.",
-      "Check the monetization products and eligibility shown for your account.",
-      "Publish original content consistently.",
-      "Track your performance and available earnings inside your dashboard."
-    ],
-    "selectors": {
-      "create_account": [
-        "text=Create new account",
-        "text=Create New Account",
-        "text=Sign Up"
-      ],
-      "first_name": [
-        "input[name='firstname']",
-        "input[name='first_name']",
-        "input[placeholder*='First']"
-      ],
-      "last_name": [
-        "input[name='lastname']",
-        "input[name='last_name']",
-        "input[placeholder*='Last']"
-      ],
-      "email": [
-        "input[name='reg_email__']",
-        "input[type='email']",
-        "input[name='email']"
-      ],
-      "password": [
-        "input[name='reg_passwd__']",
-        "input[type='password']"
-      ]
-    },
-    "demo": {
-      "first_name": "Alex",
-      "last_name": "Creator",
-      "email": "demo.creator@example.com",
-      "phone": "+1 202 555 0101",
-      "password": "DemoOnly!7429"
-    }
+{
+  "id": "upwork",
+  "name": "Upwork Freelancing",
+  "website": "https://www.upwork.com/",
+  "signup_url": "https://www.upwork.com/nx/signup/",
+  "earning_url": "https://www.upwork.com/",
+  "category": "Freelancing",
+  "target": "$500/month",
+  "demo_data": {
+    "first_name": "Alex",
+    "last_name": "Creator",
+    "email": "demo.creator@example.com",
+    "phone": "+1 202 555 0101",
+    "password": "DemoOnly!7429"
   },
-  {
-    "id": "upwork",
-    "name": "Upwork Freelancing",
-    "website": "https://www.upwork.com/",
-    "signup_url": "https://www.upwork.com/nx/signup/",
-    "official_source": "https://support.upwork.com/hc/en-us/articles/24492534968211-How-to-sign-up-as-a-freelancer-on-Upwork",
-    "category": "Freelancing",
-    "target": "$500/month",
-    "hook": "Want to build toward 500 dollars a month freelancing? Let's create the account and show the next steps.",
-    "verification_note": "If Upwork asks for verification, complete the real verification on your own account. Never use demo information for identity verification.",
-    "earning_steps": [
-      "Open Upwork.",
-      "Select Freelancer when asked how you want to use the platform.",
-      "Complete your real freelancer profile.",
-      "Add skills and relevant experience.",
-      "Create a useful portfolio.",
-      "Search for projects matching your skills.",
-      "Submit personalized proposals.",
-      "Complete projects professionally and build reviews."
-    ],
-    "selectors": {
-      "freelancer": [
-        "text=Freelancer",
-        "text=Work and get paid"
-      ],
-      "signup": [
-        "text=Sign up",
-        "text=Sign Up"
-      ],
-      "email": [
-        "input[type='email']",
-        "input[name='email']"
-      ],
-      "password": [
-        "input[type='password']"
-      ]
-    },
-    "demo": {
-      "first_name": "Alex",
-      "last_name": "Creator",
-      "email": "demo.creator@example.com",
-      "phone": "+1 202 555 0101",
-      "password": "DemoOnly!7429"
-    }
-  },
-  {
-    "id": "fiverr",
-    "name": "Fiverr Freelancing",
-    "website": "https://www.fiverr.com/",
-    "signup_url": "https://www.fiverr.com/join",
-    "official_source": "https://help.fiverr.com/hc/en-us/articles/37331817242385-Creating-your-Fiverr-account",
-    "category": "Freelancing",
-    "target": "$500/month",
-    "hook": "Want to build toward 500 dollars a month selling a skill online? Let's look at Fiverr step by step.",
-    "verification_note": "Fiverr may send a verification code to your email. Use the real code sent to your own account.",
-    "earning_steps": [
-      "Open Fiverr and choose Join.",
-      "Create your account with an email you control.",
-      "Activate the account using the real verification code.",
-      "Choose Become a Seller.",
-      "Complete your freelancer onboarding.",
-      "Create a clear Gig for one service.",
-      "Add pricing, delivery time and examples.",
-      "Publish and improve your Gig based on real customer demand."
-    ],
-    "selectors": {
-      "join": [
-        "text=Join",
-        "text=Create a new account"
-      ],
-      "email": [
-        "input[type='email']",
-        "input[name='email']"
-      ],
-      "password": [
-        "input[type='password']"
-      ]
-    },
-    "demo": {
-      "first_name": "Alex",
-      "last_name": "Creator",
-      "email": "demo.creator@example.com",
-      "phone": "+1 202 555 0101",
-      "password": "DemoOnly!7429"
-    }
-  }
-]
+  "steps": [
+    "Open Upwork",
+    "Choose freelancer signup",
+    "Enter demonstration information",
+    "Reach verification",
+    "Explain real verification",
+    "Complete the real profile",
+    "Find suitable projects",
+    "Submit proposals",
+    "Complete approved work",
+    "Receive payment"
+  ]
+}
