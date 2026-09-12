@@ -1,8 +1,10 @@
-name: Daily Online Earning Shorts
+name: Daily Live Earning Shorts
 
 on:
+
   schedule:
-    - cron: "0 6 * * *"
+
+    - cron: "17 6 * * *"
       timezone: "Asia/Dubai"
 
   workflow_dispatch:
@@ -12,54 +14,65 @@ permissions:
 
 jobs:
 
-  generate-shorts:
+  create-shorts:
 
     runs-on: ubuntu-latest
 
-    timeout-minutes: 30
+    timeout-minutes: 45
 
     steps:
 
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
-      - name: Setup Python 3.11
+      - name: Setup Python
         uses: actions/setup-python@v6
         with:
           python-version: "3.11"
 
       - name: Install FFmpeg
         run: |
+
           sudo apt-get update
+
           sudo apt-get install -y ffmpeg
 
       - name: Install Python packages
         run: |
+
           python -m pip install --upgrade pip
+
           pip install -r requirements.txt
 
-      - name: Install Playwright Chromium
+      - name: Install Chromium
         run: |
+
           python -m playwright install --with-deps chromium
 
-      - name: Generate 3 earning Shorts
-        env:
-          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+      - name: Generate 3 live website earning Shorts
         run: |
-          python earning_shorts_generator.py
 
-      - name: Verify generated videos
+          python live_earning_demo.py
+
+      - name: Check output
         run: |
+
           echo "Generated files:"
+
           ls -lh output/
 
           test -f output/online_earning_short_1.mp4
+
           test -f output/online_earning_short_2.mp4
+
           test -f output/online_earning_short_3.mp4
 
-      - name: Upload generated Shorts
+      - name: Upload Shorts
         uses: actions/upload-artifact@v4
         with:
-          name: online-earning-shorts
+
+          name: live-online-earning-shorts
+
           path: output/
+
           retention-days: 3
