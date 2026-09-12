@@ -1,71 +1,81 @@
 # Online Earning Shorts Automation
 
-Automated generation of 3 educational online-earning YouTube Shorts per day.
+This project creates three educational online earning Shorts every day.
 
-## What it does
+## Features
 
-The system:
+- Real public websites
+- Real Chromium browser
+- Live browser recording
+- Cursor movement
+- Real clicks
+- Demonstration data
+- Natural voice narration
+- Background music
+- Animated tutorial overlay
+- Verification explanation
+- Earning workflow
+- $500 example calculations
+- YouTube-ready 9:16 MP4
 
-1. Selects 3 different online earning topics.
-2. Checks the associated website.
-3. Captures a public website demonstration.
-4. Creates a step-by-step script.
-5. Generates natural voice narration.
-6. Creates animated vertical video.
-7. Adds numbered instructions.
-8. Adds earning calculations where appropriate.
-9. Adds warnings against guaranteed-income claims.
-10. Creates YouTube title and description.
-11. Uploads the finished videos as a GitHub Actions artifact.
+## Safety
 
-## Video format
+This project is a tutorial generator.
 
-- 1080x1920
-- 9:16 vertical
-- 30–60 seconds
-- Natural English voice
-- Animated instructions
-- Website demonstrations
-- Step numbering
-- Educational earning information
+It does NOT:
 
-## Important
+- create fake accounts
+- bypass CAPTCHA
+- bypass email verification
+- bypass phone verification
+- use fake OTPs to verify real accounts
+- collect passwords
+- collect personal information
+- use identity documents
+- submit payment information
 
-This project does not guarantee income.
+Demo information is used only to demonstrate form fields.
 
-Income depends on:
+## Verification
 
-- Platform eligibility
-- Skills
-- Demand
-- Competition
-- Audience
-- Traffic
-- Platform policies
-- Applicable fees
-- Location
-- Account status
+When a website requires verification, the video explains that viewers must use the real verification code sent to their own email or phone.
 
-Never enter passwords, authentication tokens or private account information into this repository.
+The system does not attempt to bypass verification.
 
-## GitHub Actions
+## Income Disclaimer
 
-The workflow generates 3 Shorts every day.
+The videos do not guarantee earnings.
 
-The workflow can also be started manually from:
+The $500/month figure is an example target.
 
-Actions → Daily Online Earning Shorts → Run workflow
+Actual earnings depend on platform eligibility, skills, demand, competition, content performance, fees and platform policies.
 
-## Secrets
+## Daily Generation
 
-Optional:
+GitHub Actions creates 3 videos per day.
 
-PEXELS_API_KEY
+The generated files are stored as a GitHub Actions artifact.
 
-The Pexels key is used only to obtain additional background visuals.
+## Manual Test
 
-## YouTube
+Open:
 
-The generated MP4 files are uploaded as GitHub Actions artifacts.
+Actions
 
-A separate local uploader can download the artifact and upload the videos to YouTube.
+→ Daily Live Earning Shorts
+
+→ Run workflow
+
+## Files
+
+earning_topics.json
+    Website/tutorial definitions
+
+live_earning_demo.py
+    Browser recording, voice and video generation
+
+requirements.txt
+    Python dependencies
+
+.github/workflows/
+    GitHub Actions automation
