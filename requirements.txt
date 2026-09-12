@@ -1,9 +1,4 @@
 requests==2.32.5
 Pillow==11.3.0
 edge-tts==7.2.3
-moviepy==1.0.3
-imageio==2.37.0
-imageio-ffmpeg==0.6.0
-beautifulsoup4==4.13.5
-playwright==1.55.0
-numpy==2.2.6
+playwright==1.59.1
