@@ -1,0 +1,136 @@
+[
+  {
+    "id": "facebook_monetization",
+    "name": "Facebook Content Monetization",
+    "website": "https://www.facebook.com/",
+    "source": "https://about.fb.com/news/2026/03/creator-fast-track-grow-your-audience-earn-money-on-facebook/",
+    "category": "Facebook",
+    "target": 500,
+    "currency": "USD",
+    "hook": "Want to build toward 500 dollars a month with Facebook? Start with the actual monetization process.",
+    "steps": [
+      "Open Facebook.",
+      "Create an account or log into your existing account.",
+      "Open your Professional Dashboard.",
+      "Open the Monetization section.",
+      "Check whether Content Monetization is available for your account.",
+      "Publish original content consistently.",
+      "Monitor qualified views, earnings and eligibility inside your dashboard."
+    ],
+    "calculation": "Example target: 500 dollars per month is a goal, not a guaranteed result.",
+    "warning": "Eligibility, earnings and available monetization features depend on Meta's current rules and your account."
+  },
+  {
+    "id": "upwork_freelancing",
+    "name": "Upwork Freelancing",
+    "website": "https://www.upwork.com/",
+    "source": "https://www.upwork.com/resources/upwork-for-beginners",
+    "category": "Freelancing",
+    "target": 500,
+    "currency": "USD",
+    "hook": "Want to build toward 500 dollars a month online? Here's a beginner freelancing route.",
+    "steps": [
+      "Open Upwork.",
+      "Click Sign Up.",
+      "Choose the Freelancer option.",
+      "Complete your freelancer profile.",
+      "Add your real skills and experience.",
+      "Create a simple portfolio.",
+      "Search for jobs that match your skills.",
+      "Send personalized proposals.",
+      "Complete projects professionally and build reviews."
+    ],
+    "calculation": "Example: 5 projects at 100 dollars each equals 500 dollars.",
+    "warning": "This is an example calculation, not an income guarantee. Actual results depend on skills, demand, competition, fees and clients."
+  },
+  {
+    "id": "fiverr_freelancing",
+    "name": "Fiverr Freelancing",
+    "website": "https://www.fiverr.com/",
+    "source": "https://www.fiverr.com/",
+    "category": "Freelancing",
+    "target": 500,
+    "currency": "USD",
+    "hook": "Can a simple online service become a 500 dollar monthly target? Let's see how Fiverr works.",
+    "steps": [
+      "Open Fiverr.",
+      "Create your account.",
+      "Complete your freelancer profile.",
+      "Choose one service you can actually deliver.",
+      "Create a clear Gig.",
+      "Add examples of your work.",
+      "Set realistic pricing.",
+      "Respond professionally to buyer requests.",
+      "Deliver work on time and build reviews."
+    ],
+    "calculation": "Example: 10 orders at 50 dollars equals 500 dollars.",
+    "warning": "Orders are not guaranteed. Never claim guaranteed income or guaranteed clients."
+  },
+  {
+    "id": "amazon_affiliate",
+    "name": "Amazon Associates",
+    "website": "https://affiliate-program.amazon.com/",
+    "source": "https://affiliate-program.amazon.com/",
+    "category": "Affiliate Marketing",
+    "target": 500,
+    "currency": "USD",
+    "hook": "Can affiliate marketing become a 500 dollar monthly target? Here's the basic process.",
+    "steps": [
+      "Open the Amazon Associates website for your eligible marketplace.",
+      "Create or apply for an Associates account.",
+      "Provide the required account and website information.",
+      "Create useful original content.",
+      "Recommend products that genuinely match your audience.",
+      "Use the appropriate affiliate links.",
+      "Disclose affiliate relationships clearly.",
+      "Track clicks and qualifying purchases."
+    ],
+    "calculation": "Your earnings depend on qualifying purchases and the applicable commission rates.",
+    "warning": "Affiliate income is not guaranteed and commission rates and program requirements can change."
+  },
+  {
+    "id": "youtube_shorts",
+    "name": "YouTube Shorts",
+    "website": "https://www.youtube.com/",
+    "source": "https://support.google.com/youtube/answer/72851",
+    "category": "YouTube",
+    "target": 500,
+    "currency": "USD",
+    "hook": "Want to build a YouTube Shorts income stream? Start with original useful videos.",
+    "steps": [
+      "Create or use a YouTube channel.",
+      "Choose one clear content niche.",
+      "Create original Shorts.",
+      "Use a strong opening hook.",
+      "Keep viewers watching.",
+      "Publish consistently.",
+      "Study YouTube Analytics.",
+      "Work toward YouTube Partner Program eligibility.",
+      "Follow YouTube's monetization policies."
+    ],
+    "calculation": "There is no fixed number of views that guarantees 500 dollars because revenue varies.",
+    "warning": "YouTube monetization requires meeting the applicable eligibility and policy requirements."
+  },
+  {
+    "id": "digital_products",
+    "name": "Digital Products",
+    "website": "https://www.gumroad.com/",
+    "source": "https://gumroad.com/",
+    "category": "Digital Products",
+    "target": 500,
+    "currency": "USD",
+    "hook": "Here's another online income model: create something useful once and sell it digitally.",
+    "steps": [
+      "Choose a useful problem to solve.",
+      "Create a digital product.",
+      "Prepare a professional product page.",
+      "Upload your product.",
+      "Set a realistic price.",
+      "Create useful content to attract potential customers.",
+      "Share the product through permitted channels.",
+      "Improve the product using customer feedback."
+    ],
+    "calculation": "Example: 25 sales at 20 dollars equals 500 dollars before applicable fees and taxes.",
+    "warning": "Sales are not guaranteed. Your result depends on product quality, demand, traffic and marketing."
+  }
+]
